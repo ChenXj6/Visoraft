@@ -158,7 +158,7 @@ func TestCandidatePassesAllFilters(t *testing.T) {
 }
 
 func TestItemCanEnqueueDuplicateDiscoveryWithoutTask(t *testing.T) {
-	for _, decision := range []string{"accepted", "duplicate", "task_failed"} {
+	for _, decision := range []string{"accepted", "duplicate", "task_created", "task_failed"} {
 		if !itemCanEnqueue(Item{Decision: decision}) {
 			t.Fatalf("expected %s item without task to be enqueueable", decision)
 		}

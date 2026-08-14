@@ -1043,7 +1043,7 @@ export default function SettingsPage() {
                         </label>
                       </div>
                       <p className="settings-policy-note">
-                        命中软字幕：直接复用并跳过翻译。命中画面硬字幕：跳过 ASR、翻译和重复烧录。
+                        命中可用中文字幕：直接复用并跳过翻译和重复烧录；未命中时才进入语音识别与后续处理。
                         证据不足或检测失败：继续原流水线。
                       </p>
                     </>

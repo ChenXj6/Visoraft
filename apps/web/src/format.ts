@@ -1,4 +1,4 @@
-import type { MediaInfo, Task } from "./api";
+import type { MediaInfo, Task, TaskStep } from "./api";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   year: "numeric",
@@ -60,6 +60,59 @@ export function formatBytes(bytes: number): string {
     unit = units[index];
   }
   return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${unit}`;
+}
+
+export function formatTransferRate(bytesPerSecond: number): string {
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return "采样中";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytesPerSecond;
+  let unit = units[0];
+  for (let index = 1; index < units.length && value >= 1024; index += 1) {
+    value /= 1024;
+    unit = units[index];
+  }
+  return `${value.toFixed(2)} ${unit}/秒`;
+}
+
+const taskStepOrder = [
+  "metadata",
+  "download",
+  "media_inspect",
+  "moderation",
+  "ai_metadata",
+  "asr",
+  "subtitles",
+  "transcode",
+  "review",
+  "publish"
+] as const;
+
+export function orderedTaskSteps(steps: TaskStep[]): TaskStep[] {
+  const rank = new Map(taskStepOrder.map((kind, index) => [kind, index]));
+  return [...steps].sort((left, right) => {
+    const leftRank = rank.get(left.kind as (typeof taskStepOrder)[number]) ?? taskStepOrder.length;
+    const rightRank = rank.get(right.kind as (typeof taskStepOrder)[number]) ?? taskStepOrder.length;
+    if (leftRank !== rightRank) return leftRank - rightRank;
+    return left.kind.localeCompare(right.kind);
+  });
+}
+
+export function taskStepProgress(step: TaskStep): number {
+  if (step.status === "succeeded" || step.status === "skipped") return 100;
+  if (step.kind === "download") {
+    if (
+      Number.isFinite(step.detail.downloaded_bytes) &&
+      Number.isFinite(step.detail.total_bytes) &&
+      Number(step.detail.total_bytes) > 0
+    ) {
+      return Math.min(
+        100,
+        Math.max(0, (Number(step.detail.downloaded_bytes) / Number(step.detail.total_bytes)) * 100)
+      );
+    }
+    return 0;
+  }
+  return Math.min(100, Math.max(0, Number(step.progress) || 0));
 }
 
 export function mediaInfoParts(info?: MediaInfo): string[] {
@@ -135,6 +188,7 @@ export const statusLabels: Record<string, string> = {
   disabled: "已停用",
   failed: "处理失败",
   cancelled: "已取消",
+  paused: "已暂停",
   abandoned: "已放弃"
 };
 
@@ -168,11 +222,12 @@ export function statusTone(status: string): string {
   ) {
     return "warning";
   }
-  if (["cancelled", "archived", "disabled"].includes(status)) return "muted";
+  if (["cancelled", "archived", "disabled", "paused"].includes(status)) return "muted";
   return "running";
 }
 
 export function taskStatusForDisplay(task: Task): string {
+  if (task.paused_at) return "paused";
   if (
     ["published", "reconciled"].includes(task.status) &&
     task.publish_mode === "simulation"

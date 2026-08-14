@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from dataclasses import dataclass
 
 
@@ -18,6 +19,7 @@ class Settings:
     control_api_url: str
     worker_token: str
     max_download_bytes: int
+    work_root: str = os.path.join(tempfile.gettempdir(), "visoraft-work")
     trusted_media_hosts: tuple[str, ...] = ()
     command_types: tuple[str, ...] = (
         "metadata",
@@ -73,6 +75,10 @@ class Settings:
                 2 * 1024 * 1024 * 1024,
                 minimum=1024,
                 maximum=20 * 1024 * 1024 * 1024,
+            ),
+            work_root=os.getenv(
+                "VISORAFT_WORK_ROOT",
+                os.path.join(tempfile.gettempdir(), "visoraft-work"),
             ),
             trusted_media_hosts=_trusted_hosts(
                 os.getenv("VISORAFT_TRUSTED_MEDIA_HOSTS", "")

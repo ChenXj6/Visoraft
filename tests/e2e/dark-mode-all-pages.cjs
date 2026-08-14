@@ -6,7 +6,7 @@ const { chromium } = require("playwright");
 const baseURL = process.env.VISORAFT_BASE_URL || "http://127.0.0.1:4173";
 const artifactDir = path.resolve(
   __dirname,
-  "../../test-artifacts/dark-mode-audit/automated"
+  "../../artifacts/v1/test-runs/dark-mode-audit/automated"
 );
 
 const settingsSections = [

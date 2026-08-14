@@ -257,6 +257,9 @@ const taskSelect = `
 		t.updated_at,
 		t.archived_at,
 		t.archived_by,
+		t.paused_at,
+		t.paused_from_status,
+		t.paused_step_kind,
 		COALESCE((
 			SELECT jsonb_agg(
 				jsonb_build_object(
@@ -346,6 +349,9 @@ func scanTask(row scanner) (Task, error) {
 		&task.UpdatedAt,
 		&task.ArchivedAt,
 		&task.ArchivedBy,
+		&task.PausedAt,
+		&task.PausedFromStatus,
+		&task.PausedStepKind,
 		&stepsJSON,
 		&assetsJSON,
 	); err != nil {
@@ -797,6 +803,9 @@ func (s *PostgresStore) Cancel(ctx context.Context, taskID string, now time.Time
 	if _, err := tx.Exec(ctx, `
 		UPDATE tasks
 		SET status='cancelled',
+		    paused_at=NULL,
+		    paused_from_status='',
+		    paused_step_kind='',
 		    error_code='',
 		    error_message='',
 		    error_retryable=false,
@@ -818,6 +827,173 @@ func (s *PostgresStore) Cancel(ctx context.Context, taskID string, now time.Time
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit cancel task: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) Pause(ctx context.Context, taskID string, now time.Time) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return fmt.Errorf("begin pause task: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		status     string
+		archivedAt *time.Time
+		pausedAt   *time.Time
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT status, archived_at, paused_at
+		FROM tasks
+		WHERE id=$1
+		FOR UPDATE
+	`, taskID).Scan(&status, &archivedAt, &pausedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock task for pause: %w", err)
+	}
+	if archivedAt != nil {
+		return &ConflictError{Code: "task_archived", Message: "回收站中的任务不能暂停，请先恢复"}
+	}
+	if pausedAt != nil {
+		return tx.Commit(ctx)
+	}
+	if status == StatusFailed || status == StatusCancelled || status == "abandoned" ||
+		status == StatusPublished || status == "reconciled" {
+		return &ConflictError{Code: "task_not_pausable", Message: "当前任务已经停止，不能暂停"}
+	}
+
+	var unsafePublication bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM platform_publications
+			WHERE task_id=$1
+			  AND status IN ('preparing','uploading','submitting','reconciliation_required')
+		)
+	`, taskID).Scan(&unsafePublication); err != nil {
+		return fmt.Errorf("check task publications before pause: %w", err)
+	}
+	if status == StatusPublishing || unsafePublication {
+		return &ConflictError{
+			Code:    "task_publication_in_progress",
+			Message: "平台投稿已经开始，当前阶段不能安全暂停；请等待本次提交结束后再操作",
+		}
+	}
+
+	var stepKind string
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE((
+			SELECT kind
+			FROM task_steps
+			WHERE task_id=$1 AND status IN ('running','queued')
+			ORDER BY CASE status WHEN 'running' THEN 0 ELSE 1 END, updated_at DESC
+			LIMIT 1
+		), '')
+	`, taskID).Scan(&stepKind); err != nil {
+		return fmt.Errorf("load task pause checkpoint: %w", err)
+	}
+	if stepKind == "" {
+		switch status {
+		case StatusAwaitingReview:
+			stepKind = StepReview
+		case StatusReadyToPublish:
+			stepKind = StepPublish
+		}
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE tasks
+		SET paused_at=$2,
+		    paused_from_status=status,
+		    paused_step_kind=$3,
+		    updated_at=$2,
+		    version=version+1
+		WHERE id=$1
+	`, taskID, now, stepKind); err != nil {
+		return fmt.Errorf("pause task: %w", err)
+	}
+	if err := s.insertUserAudit(ctx, tx, taskID, "task.paused", map[string]any{
+		"status": status,
+		"step":   stepKind,
+	}, now); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit pause task: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) Resume(ctx context.Context, taskID string, now time.Time) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return fmt.Errorf("begin resume task: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		status       string
+		archivedAt   *time.Time
+		pausedAt     *time.Time
+		pausedStatus string
+		stepKind     string
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT status, archived_at, paused_at, paused_from_status, paused_step_kind
+		FROM tasks
+		WHERE id=$1
+		FOR UPDATE
+	`, taskID).Scan(&status, &archivedAt, &pausedAt, &pausedStatus, &stepKind)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock task for resume: %w", err)
+	}
+	if archivedAt != nil {
+		return &ConflictError{Code: "task_archived", Message: "回收站中的任务不能继续，请先恢复"}
+	}
+	if pausedAt == nil {
+		return tx.Commit(ctx)
+	}
+	if stepKind == StepDownload {
+		if _, err := tx.Exec(ctx, `
+			UPDATE task_steps
+			SET detail=jsonb_set(
+			        COALESCE(detail, '{}'::jsonb),
+			        '{phase}',
+			        '"resume_requested"'::jsonb,
+			        true
+			    ),
+			    updated_at=$2
+			WHERE task_id=$1 AND kind='download' AND status='running'
+		`, taskID, now); err != nil {
+			return fmt.Errorf("mark download resume requested: %w", err)
+		}
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE tasks
+		SET paused_at=NULL,
+		    paused_from_status='',
+		    paused_step_kind='',
+		    updated_at=$2,
+		    version=version+1
+		WHERE id=$1
+	`, taskID, now); err != nil {
+		return fmt.Errorf("resume task: %w", err)
+	}
+	if err := s.insertUserAudit(ctx, tx, taskID, "task.resumed", map[string]any{
+		"status":        status,
+		"paused_status": pausedStatus,
+		"step":          stepKind,
+	}, now); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit resume task: %w", err)
 	}
 	return nil
 }
@@ -1705,7 +1881,7 @@ func (s *PostgresStore) ApplyDownloadStarted(ctx context.Context, envelope event
 			UPDATE task_steps AS step
 			SET status='running', progress=GREATEST(progress, 1),
 			    started_at=COALESCE(started_at,$2), updated_at=$2,
-			    detail=jsonb_build_object('phase','starting'),
+			    detail=jsonb_set(COALESCE(detail, '{}'::jsonb), '{phase}', '"starting"'::jsonb, true),
 			    error_code='', error_message=''
 			FROM tasks AS task
 			WHERE step.task_id=$1
@@ -2378,6 +2554,9 @@ func (s *PostgresStore) ApplyTranscodeCancelled(
 		if event.TaskID != "" && event.TaskID != taskID {
 			return fmt.Errorf("transcode cancellation task id does not match subject")
 		}
+		if event.ControlState == "paused" {
+			return s.requeuePausedTranscodeTx(ctx, tx, taskID, event, envelope, now)
+		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE transcode_runs
 			SET status='cancelled',
@@ -2640,6 +2819,8 @@ func normalizeAndValidateSubtitleResult(result *SubtitleProcessingResult) error 
 			detection.State != "found" ||
 			!validSource ||
 			detection.ConfidencePercent < 50 ||
+			!result.Decision.TranslationSkipped ||
+			result.Decision.BurnSubtitles ||
 			len(result.Documents) == 0 {
 			return fmt.Errorf("existing soft subtitle result lacks reusable subtitle evidence")
 		}
@@ -2684,6 +2865,9 @@ func (s *PostgresStore) ApplySubtitleFailed(
 	failure WorkflowFailure,
 ) error {
 	return s.applyWorkflowEvent(ctx, envelope, func(tx pgx.Tx, taskID string, now time.Time) error {
+		if failure.ControlState == "paused" {
+			return s.requeuePausedSubtitleTx(ctx, tx, taskID, failure, envelope, now)
+		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE task_steps
 			SET status='failed', finished_at=$2, updated_at=$2,
@@ -2738,8 +2922,42 @@ func (s *PostgresStore) ApplyDownloadFailed(
 	})
 }
 
-func (s *PostgresStore) ApplyDownloadCancelled(ctx context.Context, envelope events.Envelope) error {
+func (s *PostgresStore) ApplyDownloadCancelled(
+	ctx context.Context,
+	envelope events.Envelope,
+	event WorkflowCancellation,
+) error {
 	return s.applyWorkflowEvent(ctx, envelope, func(tx pgx.Tx, taskID string, now time.Time) error {
+		if event.TaskID != "" && event.TaskID != taskID {
+			return fmt.Errorf("download cancellation task id does not match subject")
+		}
+		var (
+			taskStatus     string
+			currentAttempt int
+			currentPhase   string
+		)
+		if err := tx.QueryRow(ctx, `
+			SELECT task.status, step.attempt, COALESCE(step.detail->>'phase', '')
+			FROM tasks AS task
+			JOIN task_steps AS step
+			  ON step.task_id=task.id AND step.kind='download'
+			WHERE task.id=$1
+			FOR UPDATE OF task, step
+		`, taskID).Scan(&taskStatus, &currentAttempt, &currentPhase); err != nil {
+			return fmt.Errorf("lock download cancellation state: %w", err)
+		}
+		event, ignore := downloadCancellationDecision(
+			taskStatus,
+			currentAttempt,
+			currentPhase,
+			event,
+		)
+		if ignore {
+			return s.insertWorkflowAudit(ctx, tx, taskID, "download.cancellation.ignored", envelope, now)
+		}
+		if event.ControlState == "paused" {
+			return s.requeuePausedDownloadTx(ctx, tx, taskID, event, envelope, now)
+		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE task_steps
 			SET status='cancelled', finished_at=COALESCE(finished_at,$2), updated_at=$2,
@@ -2766,6 +2984,287 @@ func (s *PostgresStore) ApplyDownloadCancelled(ctx context.Context, envelope eve
 		}
 		return s.insertWorkflowAudit(ctx, tx, taskID, "download.cancelled", envelope, now)
 	})
+}
+
+func downloadCancellationDecision(
+	taskStatus string,
+	currentAttempt int,
+	currentPhase string,
+	event WorkflowCancellation,
+) (WorkflowCancellation, bool) {
+	if terminalWorkflowStatus(taskStatus) ||
+		(event.Attempt > 0 && event.Attempt < currentAttempt) {
+		return event, true
+	}
+	// A quick resume can arrive while the old yt-dlp process is still exiting.
+	// Treat that attempt's delayed cancellation as the pause acknowledgement,
+	// never as a user cancellation, and preserve its checkpoint files.
+	if currentPhase == "resume_requested" &&
+		(event.Attempt == 0 || event.Attempt == currentAttempt) {
+		event.ControlState = "paused"
+	}
+	return event, false
+}
+
+func (s *PostgresStore) requeuePausedDownloadTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	taskID string,
+	event WorkflowCancellation,
+	envelope events.Envelope,
+	now time.Time,
+) error {
+	checkpoint := map[string]any{"phase": "paused"}
+	if event.DownloadedBytes > 0 || event.TotalBytes > 0 {
+		checkpoint["downloaded_bytes"] = event.DownloadedBytes
+		checkpoint["total_bytes"] = event.TotalBytes
+		checkpoint["total_bytes_is_estimate"] = event.TotalBytesIsEstimate
+		checkpoint["speed_bytes_per_second"] = event.SpeedBytesPerSecond
+		checkpoint["eta_seconds"] = event.ETASeconds
+		checkpoint["fragment_index"] = event.FragmentIndex
+		checkpoint["fragment_count"] = event.FragmentCount
+	}
+	checkpointRaw, err := json.Marshal(checkpoint)
+	if err != nil {
+		return fmt.Errorf("encode paused download checkpoint: %w", err)
+	}
+	var (
+		status          string
+		sourceURL       string
+		cookieProfileID *string
+		currentAttempt  int
+	)
+	if err := tx.QueryRow(ctx, `
+		SELECT task.status, task.source_url, task.cookie_profile_id::text,
+		       COALESCE(step.attempt, 0)
+		FROM tasks task
+		LEFT JOIN task_steps step
+		  ON step.task_id=task.id AND step.kind='download'
+		WHERE task.id=$1
+		FOR UPDATE OF task
+	`, taskID).Scan(&status, &sourceURL, &cookieProfileID, &currentAttempt); err != nil {
+		return fmt.Errorf("load paused download checkpoint: %w", err)
+	}
+	if terminalWorkflowStatus(status) {
+		return nil
+	}
+	nextAttempt := max(currentAttempt, event.Attempt) + 1
+	if _, err := tx.Exec(ctx, `
+		UPDATE task_steps
+		SET status='queued', attempt=$3,
+		    detail=COALESCE(detail, '{}'::jsonb) || $4::jsonb,
+		    error_code='', error_message='', finished_at=NULL, updated_at=$2
+		WHERE task_id=$1 AND kind='download'
+	`, taskID, now, nextAttempt, checkpointRaw); err != nil {
+		return fmt.Errorf("checkpoint paused download step: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE task_steps
+		SET status='queued', attempt=$3, progress=0,
+		    error_code='', error_message='', started_at=NULL, finished_at=NULL, updated_at=$2
+		WHERE task_id=$1 AND kind='media_inspect' AND status <> 'succeeded'
+	`, taskID, now, nextAttempt); err != nil {
+		return fmt.Errorf("reset paused media inspection step: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE tasks
+		SET status='metadata_ready', updated_at=$2, version=version+1
+		WHERE id=$1
+	`, taskID, now); err != nil {
+		return fmt.Errorf("checkpoint paused download task: %w", err)
+	}
+	if err := enqueuePausedCommandTx(ctx, tx, taskID, DownloadRequestedV1, map[string]any{
+		"task_id":           taskID,
+		"source_url":        sourceURL,
+		"cookie_profile_id": cookieProfileID,
+		"attempt":           nextAttempt,
+	}, now); err != nil {
+		return err
+	}
+	return s.insertWorkflowAudit(ctx, tx, taskID, "download.paused", envelope, now)
+}
+
+func (s *PostgresStore) requeuePausedSubtitleTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	taskID string,
+	failure WorkflowFailure,
+	envelope events.Envelope,
+	now time.Time,
+) error {
+	var status string
+	var currentAttempt int
+	if err := tx.QueryRow(ctx, `
+		SELECT task.status, COALESCE(step.attempt, 0)
+		FROM tasks task
+		LEFT JOIN task_steps step
+		  ON step.task_id=task.id AND step.kind='subtitles'
+		WHERE task.id=$1
+		FOR UPDATE OF task
+	`, taskID).Scan(&status, &currentAttempt); err != nil {
+		return fmt.Errorf("load paused subtitle checkpoint: %w", err)
+	}
+	if terminalWorkflowStatus(status) {
+		return nil
+	}
+	nextAttempt := max(currentAttempt, failure.Attempt) + 1
+	if _, err := tx.Exec(ctx, `
+		UPDATE task_steps
+		SET status='queued', attempt=$3,
+		    detail=jsonb_set(detail, '{phase}', '"paused"'::jsonb, true),
+		    error_code='', error_message='', finished_at=NULL, updated_at=$2
+		WHERE task_id=$1 AND kind='subtitles'
+	`, taskID, now, nextAttempt); err != nil {
+		return fmt.Errorf("checkpoint paused subtitle step: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE tasks
+		SET status='processing', updated_at=$2, version=version+1
+		WHERE id=$1
+	`, taskID, now); err != nil {
+		return fmt.Errorf("checkpoint paused subtitle task: %w", err)
+	}
+	if err := enqueuePausedCommandTx(ctx, tx, taskID, SubtitleRequestedV1, map[string]any{
+		"task_id": taskID,
+		"attempt": nextAttempt,
+	}, now); err != nil {
+		return err
+	}
+	return s.insertWorkflowAudit(ctx, tx, taskID, "subtitle.processing.paused", envelope, now)
+}
+
+func (s *PostgresStore) requeuePausedTranscodeTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	taskID string,
+	event TranscodeCancellation,
+	envelope events.Envelope,
+	now time.Time,
+) error {
+	var (
+		status           string
+		settingsSnapshot []byte
+		currentAttempt   int
+		inputAssetID     string
+	)
+	if err := tx.QueryRow(ctx, `
+		SELECT task.status, task.settings_snapshot, COALESCE(step.attempt, 0),
+		       COALESCE((
+		           SELECT asset.id::text
+		           FROM media_assets asset
+		           WHERE asset.task_id=task.id AND asset.kind='source' AND asset.status='available'
+		           ORDER BY asset.created_at DESC
+		           LIMIT 1
+		       ), '')
+		FROM tasks task
+		LEFT JOIN task_steps step
+		  ON step.task_id=task.id AND step.kind='transcode'
+		WHERE task.id=$1
+		FOR UPDATE OF task
+	`, taskID).Scan(&status, &settingsSnapshot, &currentAttempt, &inputAssetID); err != nil {
+		return fmt.Errorf("load paused transcode checkpoint: %w", err)
+	}
+	if terminalWorkflowStatus(status) {
+		return nil
+	}
+	if inputAssetID == "" {
+		return fmt.Errorf("paused transcode source asset is missing")
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE transcode_runs
+		SET status='cancelled', error_message='任务已暂停', completed_at=$4, updated_at=$4
+		WHERE id=$1 AND task_id=$2 AND attempt=$3
+		  AND status IN ('queued','running')
+	`, event.RunID, taskID, event.Attempt, now); err != nil {
+		return fmt.Errorf("checkpoint paused transcode run: %w", err)
+	}
+	nextAttempt := max(currentAttempt, event.Attempt) + 1
+	runID, err := identity.NewUUID()
+	if err != nil {
+		return err
+	}
+	policy, err := taskconfig.Decode(settingsSnapshot)
+	if err != nil {
+		return err
+	}
+	var presetID *string
+	if policy.PostingStrategy != nil {
+		presetID = policy.PostingStrategy.TranscodePresetID
+	} else if err := tx.QueryRow(ctx, `
+		SELECT strategy.transcode_preset_id::text
+		FROM tasks task
+		LEFT JOIN posting_strategies strategy ON strategy.id=task.posting_strategy_id
+		WHERE task.id=$1
+	`, taskID).Scan(&presetID); err != nil {
+		return fmt.Errorf("load paused transcode preset: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO transcode_runs (
+			id, task_id, preset_id, status, attempt, input_asset_id,
+			command_summary, progress, created_at, updated_at
+		) VALUES ($1,$2,$3,'queued',$4,$5,'{}'::jsonb,0,$6,$6)
+	`, runID, taskID, presetID, nextAttempt, inputAssetID, now); err != nil {
+		return fmt.Errorf("insert paused transcode continuation: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE task_steps
+		SET status='queued', attempt=$3,
+		    detail=jsonb_set(detail, '{phase}', '"paused"'::jsonb, true),
+		    error_code='', error_message='', finished_at=NULL, updated_at=$2
+		WHERE task_id=$1 AND kind='transcode'
+	`, taskID, now, nextAttempt); err != nil {
+		return fmt.Errorf("checkpoint paused transcode step: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE tasks
+		SET status='processing', updated_at=$2, version=version+1
+		WHERE id=$1
+	`, taskID, now); err != nil {
+		return fmt.Errorf("checkpoint paused transcode task: %w", err)
+	}
+	if err := enqueuePausedCommandTx(ctx, tx, taskID, TranscodeRequestedV1, map[string]any{
+		"task_id": taskID,
+		"run_id":  runID,
+		"attempt": nextAttempt,
+	}, now); err != nil {
+		return err
+	}
+	return s.insertWorkflowAudit(ctx, tx, taskID, "transcode.paused", envelope, now)
+}
+
+func enqueuePausedCommandTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	taskID string,
+	eventType string,
+	data map[string]any,
+	now time.Time,
+) error {
+	command, err := events.New(eventType, "visoraft/workflow-consumer", "task/"+taskID, now, data)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(command)
+	if err != nil {
+		return fmt.Errorf("marshal paused continuation command: %w", err)
+	}
+	outboxID, err := identity.NewUUID()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO outbox_messages (
+			id, aggregate_id, event_type, payload, status,
+			attempts, available_at, created_at
+		) VALUES ($1,$2,$3,$4,'pending',0,$5,$5)
+	`, outboxID, taskID, eventType, raw, now); err != nil {
+		return fmt.Errorf("enqueue paused continuation: %w", err)
+	}
+	return nil
+}
+
+func terminalWorkflowStatus(status string) bool {
+	return status == StatusCancelled || status == StatusPublished || status == "reconciled" || status == "abandoned"
 }
 
 func (s *PostgresStore) ApplyAssetsDeleted(
@@ -2877,7 +3376,10 @@ func (s *PostgresStore) applyWorkflowEvent(
 		return fmt.Errorf("check workflow task: %w", err)
 	}
 	if !exists {
-		return fmt.Errorf("workflow task %s does not exist", taskID)
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit stale workflow event: %w", err)
+		}
+		return fmt.Errorf("%w: workflow task %s does not exist", ErrNotFound, taskID)
 	}
 
 	now := envelope.Time.UTC()

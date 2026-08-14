@@ -4,7 +4,7 @@ const path = require("node:path");
 const { chromium } = require("playwright");
 
 const baseURL = process.env.VISORAFT_BASE_URL || "http://localhost:4173";
-const artifactsDir = path.resolve(__dirname, "../../test-artifacts/playwright");
+const artifactsDir = path.resolve(__dirname, "../../artifacts/v1/test-runs/playwright");
 const diagnostics = [];
 
 const routes = [

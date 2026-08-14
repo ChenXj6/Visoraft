@@ -41,6 +41,16 @@ const archivableStatuses = new Set([
   "abandoned"
 ]);
 
+const pausableStatuses = new Set([
+  "queued",
+  "fetching_metadata",
+  "metadata_ready",
+  "downloading",
+  "processing",
+  "awaiting_manual_review",
+  "ready_to_publish"
+]);
+
 function isFilter(value: string | null): value is Filter {
   return filters.some((filter) => filter.key === value);
 }
@@ -122,6 +132,17 @@ export default function TasksPage() {
       await refreshTaskViews();
     },
     onError: (error) => setNotice(messageOf(error, "批量重试失败"))
+  });
+
+  const taskControl = useMutation({
+    mutationFn: ({ task, action }: { task: Task; action: "pause" | "resume" }) =>
+      action === "pause" ? api.pauseTask(task.id) : api.resumeTask(task.id),
+    onSuccess: async (updated) => {
+      setActionError("");
+      setNotice(updated.paused_at ? "任务已暂停，可随时继续处理" : "任务已继续处理");
+      await refreshTaskViews();
+    },
+    onError: (error) => setActionError(messageOf(error, "任务状态未能更新"))
   });
 
   const archiveTask = useMutation({
@@ -441,6 +462,21 @@ export default function TasksPage() {
                         <Link className="button button-secondary" to={`/tasks/${task.id}`}>
                           查看详情
                         </Link>
+                        {(Boolean(task.paused_at) || pausableStatuses.has(task.status)) && (
+                          <button
+                            className="button button-secondary"
+                            type="button"
+                            disabled={taskControl.isPending}
+                            onClick={() =>
+                              taskControl.mutate({
+                                task,
+                                action: task.paused_at ? "resume" : "pause"
+                              })
+                            }
+                          >
+                            {task.paused_at ? "继续处理" : "暂停处理"}
+                          </button>
+                        )}
                         <button
                           className="button button-secondary"
                           type="button"

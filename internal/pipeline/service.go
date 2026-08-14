@@ -94,7 +94,7 @@ func (s *Service) advance(
 	if err != nil {
 		return err
 	}
-	hardcodedChinese := false
+	existingChinese := false
 	if reached == checkpointSubtitlesReady {
 		var decisionRaw []byte
 		err := tx.QueryRow(ctx, `
@@ -117,15 +117,15 @@ func (s *Service) advance(
 				return fmt.Errorf("decode subtitle pipeline decision: %w", err)
 			}
 		}
-		hardcodedChinese = decision.SchemaVersion == 1 &&
-			decision.Disposition == "existing_hardcoded_chinese" &&
-			!decision.BurnSubtitles
-		if hardcodedChinese {
+		existingChinese = decision.SchemaVersion == 1 &&
+			(decision.Disposition == "existing_soft_chinese" ||
+				decision.Disposition == "existing_hardcoded_chinese")
+		if existingChinese {
 			snapshot.Transcode.BurnSubtitles = false
 		}
 	}
 	next := nextStage(snapshot, policy, reached)
-	if hardcodedChinese && snapshot.Transcode.Enabled {
+	if existingChinese && snapshot.Transcode.Enabled {
 		next = tasks.StepTranscode
 	}
 	if next == "" {

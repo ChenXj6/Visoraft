@@ -8,6 +8,7 @@ import {
   PageHeader,
   PlatformChips,
   QueryError,
+  ProgressBar,
   StatusBadge,
   WorkflowRail
 } from "../components";
@@ -19,11 +20,13 @@ import {
   errorCodeLabel,
   friendlyErrorMessage,
   mediaInfoParts,
+  orderedTaskSteps,
   shortID,
   statusLabel,
   statusLabels,
   stepLabel,
   stepStatusLabel,
+  taskStepProgress,
   subtitlePhaseLabels,
   taskStatusForDisplay
 } from "../format";
@@ -145,6 +148,44 @@ function actionErrorMessage(error: unknown, fallback: string) {
 }
 
 function taskNextStep(task: Task) {
+  if (task.paused_at) {
+    const pausedLabel = stepLabel(task.paused_step_kind || "");
+    return {
+      title: `${pausedLabel === "" ? "任务" : pausedLabel}已暂停`,
+      description: "断点已保存，继续后自动恢复。",
+      actionLabel: "",
+      actionTo: ""
+    };
+  }
+  const downloadStep = task.steps.find((step) => step.kind === "download");
+  if (downloadStep?.detail.phase === "resume_requested") {
+    return {
+      title: "正在接续下载",
+      description: "",
+      actionLabel: "",
+      actionTo: ""
+    };
+  }
+  if (downloadStep?.status === "queued") {
+    const isResume =
+      downloadStep.attempt > 1 ||
+      downloadStep.detail.phase === "paused" ||
+      Number(downloadStep.detail.downloaded_bytes ?? 0) > 0;
+    return {
+      title: isResume ? "准备继续下载" : "准备下载",
+      description: isResume ? "正在恢复已保存的下载断点。" : "正在等待下载服务接收任务。",
+      actionLabel: "",
+      actionTo: ""
+    };
+  }
+  if (downloadStep?.status === "running") {
+    return {
+      title: "下载中",
+      description: "下载进度已实时保存。",
+      actionLabel: "",
+      actionTo: ""
+    };
+  }
   switch (task.status) {
     case "awaiting_manual_review":
       return {
@@ -274,6 +315,24 @@ export default function TaskDetailPage() {
     onError: (error) => setActionError(actionErrorMessage(error, "无法取消任务"))
   });
 
+  const pauseTask = useMutation({
+    mutationFn: () => api.pauseTask(taskId),
+    onSuccess: (task) => {
+      setActionError("");
+      syncTask(task);
+    },
+    onError: (error) => setActionError(actionErrorMessage(error, "无法暂停任务"))
+  });
+
+  const resumeTask = useMutation({
+    mutationFn: () => api.resumeTask(taskId),
+    onSuccess: (task) => {
+      setActionError("");
+      syncTask(task);
+    },
+    onError: (error) => setActionError(actionErrorMessage(error, "无法继续任务"))
+  });
+
   const retryTask = useMutation({
     mutationFn: () => api.retryTask(taskId),
     onSuccess: (task) => {
@@ -395,6 +454,18 @@ export default function TaskDetailPage() {
   const cancellable =
     !isArchived &&
     !["cancelled", "abandoned", "published", "reconciled"].includes(task.status);
+  const pausable =
+    !isArchived &&
+    !task.paused_at &&
+    [
+      "queued",
+      "fetching_metadata",
+      "metadata_ready",
+      "downloading",
+      "processing",
+      "awaiting_manual_review",
+      "ready_to_publish"
+    ].includes(task.status);
   const deletableAssets = task.assets.filter((asset) =>
     ["available", "failed"].includes(asset.status)
   );
@@ -408,6 +479,7 @@ export default function TaskDetailPage() {
     task.duration_seconds ??
     (inspectedDuration === undefined ? undefined : Math.round(inspectedDuration));
   const nextStep = taskNextStep(task);
+  const orderedSteps = orderedTaskSteps(task.steps);
 
   return (
     <>
@@ -416,10 +488,32 @@ export default function TaskDetailPage() {
         description={
           isArchived
             ? "这条任务位于回收站；处理和发布操作已锁定。"
+            : task.paused_at
+              ? `已暂停 · ${task.paused_step_kind ? stepLabel(task.paused_step_kind) : "当前节点"} · 断点已保存`
               : "任务状态、处理步骤和媒体文件都会保存，页面刷新不会丢失进度。"
         }
         actions={
           <div className="task-actions">
+            {pausable && (
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={pauseTask.isPending}
+                onClick={() => pauseTask.mutate()}
+              >
+                {pauseTask.isPending ? "正在暂停…" : "暂停处理"}
+              </button>
+            )}
+            {!isArchived && task.paused_at && (
+              <button
+                type="button"
+                className="button button-primary"
+                disabled={resumeTask.isPending}
+                onClick={() => resumeTask.mutate()}
+              >
+                {resumeTask.isPending ? "正在继续…" : "继续处理"}
+              </button>
+            )}
             {!isArchived &&
               (task.status === "failed" || task.status === "cancelled") &&
               !requiresCookies && (
@@ -663,34 +757,47 @@ export default function TaskDetailPage() {
               <p className="eyebrow">执行记录</p>
               <h2>处理步骤</h2>
             </div>
-            <span className="version-tag">版本 {task.version}</span>
           </header>
           {task.steps.length === 0 ? (
             <p className="quiet-empty">任务尚未生成执行步骤。</p>
           ) : (
             <ol className="step-timeline">
-              {task.steps.map((step) => (
-                <li className={`step-item step-${step.status}`} key={step.kind}>
+              {orderedSteps.map((step) => {
+                const pausedStep = Boolean(task.paused_at && task.paused_step_kind === step.kind);
+                const displayStatus = pausedStep ? "paused" : step.status;
+                const displayProgress = taskStepProgress(step);
+                const showProgress = pausedStep || !["queued", "cancelled"].includes(step.status);
+                const queuedDownload = step.kind === "download" && step.status === "queued";
+                const resumeRequested =
+                  step.kind === "download" && step.detail.phase === "resume_requested";
+                const queuedDownloadCopy =
+                  step.attempt > 1 ||
+                  step.detail.phase === "paused" ||
+                  Number(step.detail.downloaded_bytes ?? 0) > 0
+                    ? "准备恢复下载"
+                    : "准备下载";
+                return (
+                <li className={`step-item step-${displayStatus}`} key={step.kind}>
                   <span className="step-marker" aria-hidden="true" />
                   <div className="step-copy">
                     <div className="step-title-line">
                       <strong>{stepLabel(step.kind)}</strong>
-                      <span>{stepStatusLabel(step.status)}</span>
+                      <span>{pausedStep ? "已暂停" : resumeRequested ? "正在接续" : stepStatusLabel(step.status)}</span>
                     </div>
-                    {step.kind !== "download" && (
-                      <div
-                        className="progress-track"
-                        role="progressbar"
-                        aria-label={`${stepLabel(step.kind)}进度`}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={step.progress}
-                      >
-                        <span style={{ width: `${step.progress}%` }} />
-                      </div>
+                    {step.kind !== "download" && showProgress && (
+                      <ProgressBar
+                        value={displayProgress}
+                        label={`${stepLabel(step.kind)}进度`}
+                        tone={pausedStep ? "paused" : step.status === "failed" ? "danger" : step.status === "succeeded" ? "success" : "primary"}
+                        compact
+                      />
                     )}
                     <p>
-                      尝试 {step.attempt} · {formatDateTime(step.updated_at)}
+                      {step.status === "queued" && !pausedStep
+                        ? queuedDownload
+                          ? queuedDownloadCopy
+                          : "等待前序步骤完成"
+                        : `更新于 ${formatDateTime(step.updated_at)}`}
                     </p>
                     {step.kind === "subtitles" && step.detail.phase && (
                       <p className="step-phase" aria-live="polite">
@@ -701,21 +808,25 @@ export default function TaskDetailPage() {
                       <SubtitleDecisionNotice step={step} />
                     )}
                     {step.kind === "download" && (
-                      <DownloadStepActivity step={step} />
+                      <DownloadStepActivity step={step} paused={pausedStep} />
                     )}
                     {step.error_message && (
                       <p className="inline-error">{friendlyErrorMessage(step.error_message)}</p>
                     )}
                   </div>
                   <strong className="step-progress">
-                    {step.status === "succeeded"
+                    {pausedStep
+                      ? "已暂停"
+                      : step.status === "succeeded"
                       ? "完成"
                       : step.kind === "download" && step.status === "running"
-                        ? "下载中"
-                        : `${step.progress}%`}
+                        ? resumeRequested ? "正在接续" : "下载中"
+                        : step.status === "queued"
+                          ? "等待"
+                          : `${displayProgress.toFixed(displayProgress < 10 ? 1 : 0)}%`}
                   </strong>
                 </li>
-              ))}
+              )})}
             </ol>
           )}
         </section>

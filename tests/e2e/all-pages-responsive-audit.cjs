@@ -9,7 +9,7 @@ const monitorID =
   "899053b9-e921-4a41-a865-7867461b0e05";
 const artifactDir = path.resolve(
   __dirname,
-  "../../test-artifacts/all-pages-responsive-audit"
+  "../../artifacts/v1/test-runs/all-pages-responsive-audit"
 );
 
 const routes = [

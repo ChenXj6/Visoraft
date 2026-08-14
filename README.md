@@ -144,11 +144,16 @@ deploy/                   数据库迁移和部署相关文件
 tests/                    契约与端到端测试
 scripts/                  本地启动、检查和运维脚本
 assets/brand/             品牌资源
-docs/                     架构、许可边界与实现文档
+docs/v1/                  当前 V1 的产品、架构、计划与测试文档
+docs/v2/                  下一代 V2 的产品规划、架构与实施计划
+diagram/v1|v2/            按代际归档的流程图与架构图
+artifacts/v1|v2/          按代际归档的本地测试证据（默认不入库）
 compose.yaml              本地完整服务编排
 ```
 
-哪些文件可以公开、哪些必须留在本地，见 [公开仓库边界](docs/PUBLICATION_BOUNDARY.md)。FFmpeg 的许可构建边界见 [FFmpeg LGPL 构建说明](docs/ffmpeg-lgpl-build.md)，内部实现说明见 [技术实现文档](docs/TECHNICAL_IMPLEMENTATION.md)。
+当前可运行源码属于 V1；V2 尚处于下一代产品规划阶段。版本资料入口见 [文档版本索引](docs/README.md)，源码代际规则见 [代码版本策略](docs/CODE_VERSIONING.md)。
+
+哪些文件可以公开、哪些必须留在本地，见 [V1 公开仓库边界](docs/v1/architecture/PUBLICATION_BOUNDARY.md)。FFmpeg 的许可构建边界见 [V1 FFmpeg LGPL 构建说明](docs/v1/architecture/ffmpeg-lgpl-build.md)，当前内部实现说明见 [V1 技术实现文档](docs/v1/architecture/TECHNICAL_IMPLEMENTATION.md)。
 
 ## 当前验证边界
 

@@ -249,6 +249,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && test -s /tmp/subtitle-smoke.h264 \
     && rm -f /tmp/subtitle-smoke.vtt /tmp/subtitle-smoke.h264
 
+# A fresh named volume inherits this directory's ownership. Keeping the
+# resumable workspace writable by the unprivileged worker makes pause/resume
+# safe without granting the media process root privileges.
+RUN install -d -o 10001 -g 10001 /var/lib/visoraft-work
+
 USER 10001:10001
 
 CMD ["python", "-m", "visoraft_media.worker"]

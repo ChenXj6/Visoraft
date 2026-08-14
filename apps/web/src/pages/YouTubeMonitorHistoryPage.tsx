@@ -27,17 +27,24 @@ type MonitorItem = YouTubeMonitorHistory["items"][number];
 type MonitorScope = YouTubeMonitorHistory["monitor"]["series_scopes"][number];
 
 function canEnqueue(item: MonitorItem) {
-  return !item.task_id && ["accepted", "duplicate", "task_failed"].includes(item.decision);
+  return (
+    !item.task_id &&
+    ["accepted", "duplicate", "task_created", "task_failed"].includes(item.decision)
+  );
 }
 
 function decisionLabel(item: MonitorItem) {
   if (item.task_id) return "已有任务";
   if (item.decision === "duplicate") return "可加入任务";
+  if (item.decision === "task_created") return "可重新加入";
   return decisionLabels[item.decision] ?? "未知结果";
 }
 
 function decisionReason(item: MonitorItem) {
   if (item.task_id) return "该视频已经关联任务";
+  if (item.decision === "task_created") {
+    return "原任务已永久删除，可重新加入任务队列";
+  }
   if (
     item.decision === "duplicate" &&
     item.decision_reason.includes("此前已处理")
@@ -373,7 +380,9 @@ export default function YouTubeMonitorHistoryPage() {
                         disabled={enqueue.isPending}
                         onClick={() => enqueue.mutate([item.id])}
                       >
-                        {item.decision === "task_failed" ? "重试建单" : "加入任务"}
+                        {item.decision === "task_failed" || item.decision === "task_created"
+                          ? "重新加入"
+                          : "加入任务"}
                       </button>
                     ) : (
                       <span>无需操作</span>

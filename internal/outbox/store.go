@@ -27,14 +27,20 @@ func NewStore(pool *pgxpool.Pool) *Store {
 func (s *Store) Claim(ctx context.Context, limit int) ([]Message, error) {
 	rows, err := s.pool.Query(ctx, `
 		WITH picked AS (
-			SELECT id
-			FROM outbox_messages
-			WHERE (
-				status='pending' AND available_at <= now()
+			SELECT message.id
+			FROM outbox_messages message
+			WHERE ((
+				message.status='pending' AND message.available_at <= now()
 			) OR (
-				status='publishing' AND locked_at < now() - interval '2 minutes'
+				message.status='publishing' AND message.locked_at < now() - interval '2 minutes'
+			))
+			AND NOT EXISTS (
+				SELECT 1
+				FROM tasks task
+				WHERE task.id=message.aggregate_id
+				  AND task.paused_at IS NOT NULL
 			)
-			ORDER BY created_at
+			ORDER BY message.created_at
 			FOR UPDATE SKIP LOCKED
 			LIMIT $1
 		)

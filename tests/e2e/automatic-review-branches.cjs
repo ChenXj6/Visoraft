@@ -8,7 +8,7 @@ const webBaseURL = process.env.VISORAFT_BASE_URL || "http://localhost:4173";
 const fixtureURL = "http://fixture-provider:8090/media/sample.wav";
 const artifactsDir = path.resolve(
   __dirname,
-  "../../artifacts/acceptance/automatic-review-branches",
+  "../../artifacts/v1/acceptance/automatic-review-branches",
 );
 
 fs.mkdirSync(artifactsDir, { recursive: true });

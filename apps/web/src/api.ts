@@ -161,6 +161,9 @@ export type Task = {
   updated_at: string;
   archived_at?: string;
   archived_by?: string;
+  paused_at?: string;
+  paused_from_status?: string;
+  paused_step_kind?: string;
   steps: TaskStep[];
   assets: MediaAsset[];
 };
@@ -920,6 +923,14 @@ export const api = {
     }),
   cancelTask: (id: string) =>
     requestJSON<Task>(`/api/v1/tasks/${encodeURIComponent(id)}/cancel`, {
+      method: "POST"
+    }),
+  pauseTask: (id: string) =>
+    requestJSON<Task>(`/api/v1/tasks/${encodeURIComponent(id)}/pause`, {
+      method: "POST"
+    }),
+  resumeTask: (id: string) =>
+    requestJSON<Task>(`/api/v1/tasks/${encodeURIComponent(id)}/resume`, {
       method: "POST"
     }),
   retryTask: (id: string) =>

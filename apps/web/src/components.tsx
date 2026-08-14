@@ -4,8 +4,12 @@ import type { Task, TaskStep } from "./api";
 import {
   formatRelativeTime,
   friendlyErrorMessage,
+  formatBytes,
   platformLabel,
+  orderedTaskSteps,
   shortID,
+  stepLabel,
+  taskStepProgress,
   statusLabel,
   statusTone,
   taskStatusForDisplay
@@ -56,20 +60,53 @@ export function PlatformChips({ platforms }: { platforms: string[] }) {
   );
 }
 
+export function ProgressBar({
+  value,
+  label,
+  tone = "primary",
+  compact = false,
+  indeterminate = false
+}: {
+  value: number;
+  label: string;
+  tone?: "primary" | "success" | "danger" | "paused";
+  compact?: boolean;
+  indeterminate?: boolean;
+}) {
+  const safeValue = Math.min(100, Math.max(0, Number(value) || 0));
+  return (
+    <div
+      className={`ui-progress ui-progress-${tone} ${compact ? "ui-progress-compact" : ""} ${indeterminate ? "ui-progress-indeterminate" : ""}`}
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={indeterminate ? undefined : Number(safeValue.toFixed(1))}
+    >
+      <span style={indeterminate ? undefined : { width: `${safeValue}%` }} />
+    </div>
+  );
+}
+
 export function TaskTitle({ task }: { task: Task }) {
   return <>{task.title || task.original_title || "正在读取媒体信息"}</>;
 }
 
 export function currentStep(task: Task): TaskStep | undefined {
+  const ordered = orderedTaskSteps(task.steps);
+  if (task.paused_at && task.paused_step_kind) {
+    const paused = ordered.find((step) => step.kind === task.paused_step_kind);
+    if (paused) return paused;
+  }
   return (
-    task.steps.find((step) => step.status === "running") ??
-    task.steps.find((step) => step.status === "failed") ??
-    task.steps.find((step) => step.status === "queued") ??
-    task.steps.at(-1)
+    ordered.find((step) => step.status === "running") ??
+    ordered.find((step) => step.status === "failed") ??
+    ordered.find((step) => step.status === "queued") ??
+    ordered.at(-1)
   );
 }
 
-type RailState = "done" | "active" | "error" | "waiting" | "idle" | "stopped";
+type RailState = "done" | "active" | "paused" | "error" | "waiting" | "idle" | "stopped";
 
 const workflowStages = [
   { key: "metadata", label: "信息" },
@@ -90,6 +127,20 @@ function persistedStepState(task: Task, kind: string): RailState | undefined {
 }
 
 function stageState(task: Task, key: (typeof workflowStages)[number]["key"]): RailState {
+  const pausedStage = task.paused_step_kind === "metadata"
+    ? "metadata"
+    : task.paused_step_kind === "download"
+      ? "download"
+      : ["media_inspect", "moderation", "ai_metadata", "asr", "subtitles", "transcode"].includes(
+          task.paused_step_kind ?? ""
+        )
+        ? "process"
+        : task.paused_step_kind === "review"
+          ? "review"
+          : task.paused_step_kind === "publish"
+            ? "publish"
+            : "";
+  if (task.paused_at && pausedStage === key) return "paused";
   if (key === "metadata" || key === "download") {
     const persisted = persistedStepState(task, key);
     if (persisted) return persisted;
@@ -99,7 +150,7 @@ function stageState(task: Task, key: (typeof workflowStages)[number]["key"]): Ra
   if (key === "process") {
     const persisted = persistedStepState(task, "media_inspect");
     if (persisted) return persisted;
-    if (status === "processing") return "active";
+    if (status === "processing") return task.paused_at ? "waiting" : "active";
     if (
       ["awaiting_manual_review", "ready_to_publish", "publishing", "published", "reconciled"].includes(
         status
@@ -109,13 +160,13 @@ function stageState(task: Task, key: (typeof workflowStages)[number]["key"]): Ra
     }
   }
   if (key === "review") {
-    if (status === "awaiting_manual_review") return "active";
+    if (status === "awaiting_manual_review") return task.paused_at ? "waiting" : "active";
     if (["ready_to_publish", "publishing", "published", "reconciled"].includes(status)) {
       return "done";
     }
   }
   if (key === "publish") {
-    if (status === "publishing") return "active";
+    if (status === "publishing") return task.paused_at ? "waiting" : "active";
     if (["published", "reconciled"].includes(status)) return "done";
   }
   return "idle";
@@ -141,6 +192,8 @@ export function WorkflowRail({ task, compact = false }: { task: Task; compact?: 
                   ? "完成"
                   : state === "active"
                     ? "执行中"
+                    : state === "paused"
+                      ? "已暂停"
                     : state === "error"
                       ? "失败"
                       : state === "stopped"
@@ -169,6 +222,8 @@ export function TaskTrack({
   actions?: ReactNode;
 }) {
   const step = currentStep(task);
+  const stepProgress = step ? taskStepProgress(step) : 0;
+  const savedBytes = step?.kind === "download" ? Number(step.detail.downloaded_bytes) || 0 : 0;
   return (
     <article className={`task-track ${selected ? "task-track-selected" : ""}`}>
       <div className="track-media">
@@ -220,9 +275,25 @@ export function TaskTrack({
           {task.source_url}
         </a>
         <div className="track-progress-line">
-          <WorkflowRail task={task} compact />
+          <div className="track-progress-visual">
+            <WorkflowRail task={task} compact />
+            {step && step.status !== "queued" && (
+              <ProgressBar
+                value={stepProgress}
+                label={`${stepLabel(step.kind)}进度`}
+                tone={task.paused_at ? "paused" : step.status === "failed" ? "danger" : "primary"}
+                compact
+              />
+            )}
+          </div>
           <span className="track-progress-copy">
-            {step ? `${step.progress}% · 尝试 ${step.attempt}` : "等待步骤"}
+            {task.paused_at
+              ? `${step ? stepLabel(task.paused_step_kind || step.kind) : "当前节点"}已暂停${savedBytes > 0 ? ` · 已保存 ${formatBytes(savedBytes)}` : ""}`
+              : step
+                ? step.status === "queued"
+                  ? `等待${stepLabel(step.kind)}`
+                  : `${stepLabel(step.kind)} ${stepProgress.toFixed(stepProgress < 10 ? 1 : 0)}%`
+                : "等待步骤"}
           </span>
         </div>
         {task.error_message && (

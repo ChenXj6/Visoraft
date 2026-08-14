@@ -464,8 +464,8 @@ func (s *PostgresStore) TaskProcessingConfig(
 		)
 	}
 	if subtitleDecision.SchemaVersion == 1 &&
-		subtitleDecision.Disposition == "existing_hardcoded_chinese" &&
-		!subtitleDecision.BurnSubtitles {
+		(subtitleDecision.Disposition == "existing_soft_chinese" ||
+			subtitleDecision.Disposition == "existing_hardcoded_chinese") {
 		snapshot.Transcode.BurnSubtitles = false
 		runtime.SubtitleAsset = nil
 	}

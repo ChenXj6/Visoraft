@@ -49,6 +49,18 @@ docs/TEST_STATUS_*.md
 docs/*_TEST_*.md
 diagram/**/*.png
 
+# Private reconstruction references; never publish with the independent source tree
+docs/v1/architecture/legacy-package/
+docs/v1/architecture/*Like*Package*.zip
+docs/v1/product/feasibility/
+docs/v1/research/product-research/archive/
+docs/v1/planning/findings.md
+docs/v1/planning/progress.md
+docs/v1/planning/task_plan.md
+docs/v1/testing/TEST_STATUS_*.md
+docs/v1/testing/*_TEST_*.md
+docs/MIGRATION_MAP_*.md
+
 # Editors, operating systems and temporary files
 .idea/
 .vscode/

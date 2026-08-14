@@ -52,8 +52,10 @@ func TestExistingSoftChineseResultRequiresReusableSourceEvidence(t *testing.T) {
 			Segments:   []map[string]any{{"text": "中文字幕"}},
 		}},
 		Decision: SubtitleProcessingDecision{
-			SchemaVersion: 1,
-			Disposition:   "existing_soft_chinese",
+			SchemaVersion:      1,
+			Disposition:        "existing_soft_chinese",
+			TranslationSkipped: true,
+			BurnSubtitles:      false,
 			Detection: ExistingSubtitleDetectionResult{
 				SchemaVersion:     1,
 				State:             "found",

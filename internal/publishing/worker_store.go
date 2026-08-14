@@ -70,6 +70,12 @@ func (s *PostgresStore) ClaimPublications(
 				publication.locked_at IS NULL
 				OR publication.locked_at < $3 - interval '15 minutes'
 			  )
+			  AND EXISTS (
+				SELECT 1
+				FROM tasks task
+				WHERE task.id=publication.task_id
+				  AND task.paused_at IS NULL
+			  )
 			ORDER BY
 				CASE publication.status
 					WHEN 'reconciliation_required' THEN 0

@@ -11,7 +11,7 @@
 
 标志由三条媒体轨道汇入向前的播放标记，红色竖线代表剪辑台上的播放头。造型采用平面硬边结构，不沿用原项目名称、播放按钮外形或配色。
 
-主文件：[`../assets/brand/visoraft-mark.svg`](../assets/brand/visoraft-mark.svg)。
+主文件：[`assets/brand/visoraft-mark.svg`](../../../assets/brand/visoraft-mark.svg)。
 
 ## 颜色
 

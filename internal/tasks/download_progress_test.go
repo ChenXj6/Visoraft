@@ -71,3 +71,30 @@ func TestAnnotateStepActivitySeparatesLegacyAndStalledDownloads(t *testing.T) {
 		t.Fatalf("legacy download must not be falsely marked stalled: %+v", steps[1])
 	}
 }
+
+func TestDownloadCancellationDecisionTreatsQuickResumeAsPauseAcknowledgement(t *testing.T) {
+	event, ignore := downloadCancellationDecision(
+		StatusDownloading,
+		3,
+		"resume_requested",
+		WorkflowCancellation{Attempt: 3, ControlState: "cancelled"},
+	)
+	if ignore {
+		t.Fatal("current attempt must not be ignored")
+	}
+	if event.ControlState != "paused" {
+		t.Fatalf("quick resume cancellation must preserve the checkpoint, got %q", event.ControlState)
+	}
+}
+
+func TestDownloadCancellationDecisionIgnoresOlderAttempt(t *testing.T) {
+	_, ignore := downloadCancellationDecision(
+		StatusMetadataReady,
+		4,
+		"paused",
+		WorkflowCancellation{Attempt: 3, ControlState: "cancelled"},
+	)
+	if !ignore {
+		t.Fatal("an older attempt must not cancel the current download")
+	}
+}

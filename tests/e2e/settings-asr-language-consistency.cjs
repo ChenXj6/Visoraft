@@ -6,7 +6,7 @@ const { chromium } = require("playwright");
 const baseURL = process.env.VISORAFT_BASE_URL || "http://localhost:4173";
 const screenshotPath = path.resolve(
   __dirname,
-  "../../artifacts/acceptance/2026-08-11-asr-language-consistency.png"
+  "../../artifacts/v1/acceptance/2026-08-11-asr-language-consistency.png"
 );
 
 function field(page, labelText, control) {

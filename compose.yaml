@@ -38,6 +38,7 @@ x-media-service: &media-service
     VISORAFT_CONTROL_API_URL: http://control-api:8080
     VISORAFT_WORKER_TOKEN: visoraft-local-worker-token-2026
     VISORAFT_MAX_DOWNLOAD_BYTES: "2147483648"
+    VISORAFT_WORK_ROOT: /var/lib/visoraft-work
     VISORAFT_YTDLP_HTTP_CHUNK_SIZE_BYTES: "10485760"
     VISORAFT_YTDLP_CONCURRENT_FRAGMENTS: "4"
     VISORAFT_DOWNLOAD_STALL_TIMEOUT_SECONDS: "180"
@@ -52,6 +53,8 @@ x-media-service: &media-service
       condition: service_healthy
   networks:
     - backend
+  volumes:
+    - media-work:/var/lib/visoraft-work
 
 services:
   fixture-provider:
@@ -292,6 +295,7 @@ volumes:
   postgres-data:
   rabbitmq-data:
   seaweedfs-data:
+  media-work:
 
 networks:
   backend:

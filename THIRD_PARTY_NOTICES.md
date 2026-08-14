@@ -48,7 +48,7 @@ Important distribution boundaries:
   FFmpeg and OpenH264 source, checksums, licenses and build evidence are retained
   under `/usr/share/ffmpeg-compliance/` and
   `/usr/share/openh264-compliance/` in the Worker image. See
-  `docs/ffmpeg-lgpl-build.md`.
+`docs/v1/architecture/ffmpeg-lgpl-build.md`.
 - H.264 may be subject to patent licensing requirements in some jurisdictions.
   Open-source copyright licenses do not by themselves grant every patent right;
   production operators must assess the markets where they encode or distribute.

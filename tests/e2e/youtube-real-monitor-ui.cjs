@@ -6,7 +6,7 @@ const { chromium } = require("playwright");
 const baseURL = process.env.VISORAFT_BASE_URL || "http://localhost:4173";
 const artifactsDir = path.resolve(
   __dirname,
-  "../../test-artifacts/youtube-real-monitor"
+  "../../artifacts/v1/test-runs/youtube-real-monitor"
 );
 const monitors = {
   search: {

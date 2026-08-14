@@ -220,7 +220,7 @@ func (s *Service) enqueueItem(
 	}
 	if !itemCanEnqueue(item) {
 		result.Status = "failed"
-		result.Message = "只有尚未关联任务的已接收、重复发现或建单失败结果可以加入任务"
+		result.Message = "只有尚未关联任务的已接收、重复发现、原任务已删除或建单失败结果可以加入任务"
 		return result
 	}
 	now := s.now().UTC()
@@ -295,6 +295,7 @@ func itemCanEnqueue(item Item) bool {
 	}
 	return item.Decision == "accepted" ||
 		item.Decision == "duplicate" ||
+		item.Decision == "task_created" ||
 		item.Decision == "task_failed"
 }
 
@@ -615,7 +616,15 @@ func (s *Service) validateTaskTemplateReferences(
 	template TaskTemplate,
 ) error {
 	fields := map[string]string{}
-	if template.CookieProfileID != nil {
+	if template.CookieProfileID == nil {
+		currentSettings, err := s.settings.Get(ctx)
+		if err != nil {
+			return err
+		}
+		if currentSettings.YouTube.Provider != "fixture" {
+			fields["task_template.cookie_profile_id"] = "请选择用于 YouTube 下载的 Cookie 配置"
+		}
+	} else {
 		exists, err := s.store.CookieProfileExists(ctx, *template.CookieProfileID)
 		if err != nil {
 			return err

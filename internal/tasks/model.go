@@ -122,6 +122,9 @@ type Task struct {
 	UpdatedAt         time.Time        `json:"updated_at"`
 	ArchivedAt        *time.Time       `json:"archived_at,omitempty"`
 	ArchivedBy        string           `json:"archived_by,omitempty"`
+	PausedAt          *time.Time       `json:"paused_at,omitempty"`
+	PausedFromStatus  string           `json:"paused_from_status,omitempty"`
+	PausedStepKind    string           `json:"paused_step_kind,omitempty"`
 	Steps             []Step           `json:"steps"`
 	Assets            []MediaAsset     `json:"assets"`
 }
@@ -197,9 +200,12 @@ type Metadata struct {
 }
 
 type WorkflowFailure struct {
-	Code      string `json:"code"`
-	Message   string `json:"message"`
-	Retryable bool   `json:"retryable"`
+	TaskID       string `json:"task_id,omitempty"`
+	Attempt      int    `json:"attempt,omitempty"`
+	Code         string `json:"code"`
+	Message      string `json:"message"`
+	Retryable    bool   `json:"retryable"`
+	ControlState string `json:"control_state,omitempty"`
 }
 
 type DownloadProgress struct {
@@ -356,10 +362,27 @@ type TranscodeFailure struct {
 }
 
 type TranscodeCancellation struct {
-	TaskID  string `json:"task_id"`
-	RunID   string `json:"run_id"`
-	Attempt int    `json:"attempt"`
-	Message string `json:"message"`
+	TaskID       string `json:"task_id"`
+	RunID        string `json:"run_id"`
+	Attempt      int    `json:"attempt"`
+	Message      string `json:"message"`
+	ControlState string `json:"control_state,omitempty"`
+}
+
+type WorkflowCancellation struct {
+	TaskID               string  `json:"task_id"`
+	Attempt              int     `json:"attempt"`
+	Message              string  `json:"message"`
+	ControlState         string  `json:"control_state,omitempty"`
+	Progress             int     `json:"progress,omitempty"`
+	Phase                string  `json:"phase,omitempty"`
+	DownloadedBytes      int64   `json:"downloaded_bytes,omitempty"`
+	TotalBytes           int64   `json:"total_bytes,omitempty"`
+	TotalBytesIsEstimate bool    `json:"total_bytes_is_estimate,omitempty"`
+	SpeedBytesPerSecond  float64 `json:"speed_bytes_per_second,omitempty"`
+	ETASeconds           *int    `json:"eta_seconds,omitempty"`
+	FragmentIndex        int     `json:"fragment_index,omitempty"`
+	FragmentCount        int     `json:"fragment_count,omitempty"`
 }
 
 type BulkRetryInput struct {

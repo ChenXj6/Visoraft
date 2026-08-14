@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0-draft",
+  "key": "youtube",
+  "connectorVersion": "0.1.0-proposed",
+  "roles": ["source", "destination"],
+  "mediaTypes": ["video", "shortVideo"],
+  "authentication": {
+    "type": "oauth2",
+    "requiredScopes": []
+  },
+  "triggers": [
+    {
+      "type": "channel.video_published",
+      "delivery": "push",
+      "supportsHistoricalImport": false
+    },
+    {
+      "type": "search.new_match",
+      "delivery": "poll",
+      "supportsHistoricalImport": true
+    }
+  ],
+  "actions": [
+    {
+      "type": "publish.video",
+      "supportsDraft": true,
+      "supportsSchedule": true,
+      "supportsReconcile": true,
+      "sideEffect": true
+    }
+  ],
+  "limits": {
+    "dynamicFromConnection": true,
+    "maxTargetsPerWorkflow": 8
+  },
+  "releaseGates": {
+    "requiresProviderAppReview": true,
+    "requiresRealCredentialAcceptance": true
+  }
+}

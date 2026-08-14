@@ -55,6 +55,8 @@ type Store interface {
 	CookieProfileExists(context.Context, string) (bool, error)
 	PostingStrategy(context.Context, string) (PostingStrategyReference, error)
 	SetCookieProfile(context.Context, string, *string, time.Time) error
+	Pause(context.Context, string, time.Time) error
+	Resume(context.Context, string, time.Time) error
 	Cancel(context.Context, string, time.Time) error
 	Retry(context.Context, string, time.Time) error
 	DeleteAssets(context.Context, string, time.Time) error
@@ -375,6 +377,26 @@ func (s *Service) Cancel(ctx context.Context, id string) (Task, error) {
 		return Task{}, ErrInvalidID
 	}
 	if err := s.store.Cancel(ctx, id, s.now().UTC()); err != nil {
+		return Task{}, err
+	}
+	return s.store.Get(ctx, id)
+}
+
+func (s *Service) Pause(ctx context.Context, id string) (Task, error) {
+	if !identity.IsUUID(id) {
+		return Task{}, ErrInvalidID
+	}
+	if err := s.store.Pause(ctx, id, s.now().UTC()); err != nil {
+		return Task{}, err
+	}
+	return s.store.Get(ctx, id)
+}
+
+func (s *Service) Resume(ctx context.Context, id string) (Task, error) {
+	if !identity.IsUUID(id) {
+		return Task{}, ErrInvalidID
+	}
+	if err := s.store.Resume(ctx, id, s.now().UTC()); err != nil {
 		return Task{}, err
 	}
 	return s.store.Get(ctx, id)

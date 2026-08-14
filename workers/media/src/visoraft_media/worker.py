@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import signal
 import tempfile
 import threading
@@ -11,7 +12,7 @@ from typing import Any
 
 import pika
 
-from .cancellation import CancellationProbe
+from .cancellation import CancellationLatch, CancellationProbe
 from .cookie_material import CookieMaterialClient, CookieMaterialFailure
 from .cover_importer import CoverImportFailure, import_cover
 from .downloader import (
@@ -480,9 +481,12 @@ class MediaWorker:
         last_progress = 0
         last_phase = ""
         last_reported_at = 0.0
+        last_telemetry: DownloadTelemetry | None = None
+        cancellation = CancellationLatch(self.cancellation, task_id)
 
         def report_progress(telemetry: DownloadTelemetry) -> None:
-            nonlocal last_phase, last_progress, last_reported_at
+            nonlocal last_phase, last_progress, last_reported_at, last_telemetry
+            last_telemetry = telemetry
             value = max(1, min(int(telemetry.progress), 99))
             now = time.monotonic()
             phase_changed = telemetry.phase != last_phase
@@ -511,17 +515,14 @@ class MediaWorker:
             )
 
         def should_cancel() -> bool:
-            return (
-                self._stopping
-                or self._session_cancelled.is_set()
-                or self.cancellation.is_cancelled(task_id)
-            )
+            if self._stopping or self._session_cancelled.is_set():
+                return cancellation.cancel_locally()
+            return cancellation.should_cancel()
 
+        download_work_dir = Path(self.settings.work_root) / task_id / "download"
         try:
             with self.cookie_material.materialize(cookie_profile_id) as cookie_file:
-                with tempfile.TemporaryDirectory(
-                    prefix=f"visoraft-{task_id[:8]}-"
-                ) as raw_dir:
+                with persistent_task_directory(download_work_dir) as raw_dir:
                     downloaded = self.downloader.download(
                         source_url,
                         Path(raw_dir),
@@ -664,7 +665,11 @@ class MediaWorker:
                             exc,
                         )
 
-                    if self.cancellation.is_cancelled(task_id, force=True):
+                    if self._stopping or self._session_cancelled.is_set():
+                        cancellation.cancel_locally()
+                    else:
+                        cancellation.should_cancel(force=True)
+                    if cancellation.state != "active":
                         try:
                             self.storage.delete_object(object_key)
                         except StorageFailure:
@@ -675,7 +680,7 @@ class MediaWorker:
                             )
                         raise DownloadCancelled("download cancelled by user")
 
-                    return Envelope.create(
+                    result = Envelope.create(
                         DOWNLOAD_COMPLETED_V1,
                         request.subject,
                         {
@@ -693,6 +698,8 @@ class MediaWorker:
                             "additional_assets": additional_assets,
                         },
                     )
+                    shutil.rmtree(download_work_dir, ignore_errors=True)
+                    return result
         except CookieMaterialFailure as exc:
             return Envelope.create(
                 DOWNLOAD_FAILED_V1,
@@ -704,14 +711,24 @@ class MediaWorker:
                 },
             )
         except DownloadCancelled as exc:
+            control_state = cancellation.state
+            if control_state == "active":
+                control_state = "cancelled"
+            if control_state != "paused":
+                shutil.rmtree(download_work_dir, ignore_errors=True)
+            event_data: dict[str, Any] = {
+                "task_id": task_id,
+                "attempt": attempt,
+                "message": str(exc),
+                "control_state": control_state,
+            }
+            if last_telemetry is not None:
+                event_data.update(last_telemetry.as_event_data())
+                event_data["progress"] = last_progress
             return Envelope.create(
                 DOWNLOAD_CANCELLED_V1,
                 request.subject,
-                {
-                    "task_id": task_id,
-                    "attempt": attempt,
-                    "message": str(exc),
-                },
+                event_data,
             )
         except SourceRejected as exc:
             return Envelope.create(
@@ -825,6 +842,7 @@ class MediaWorker:
         if request.subject != f"task/{task_id}":
             raise InvalidEnvelope("subtitle command task_id does not match its subject")
         attempt = int(request.data.get("attempt", 1))
+        cancellation = CancellationLatch(self.cancellation, task_id)
         self._publish(
             channel,
             Envelope.create(
@@ -835,11 +853,9 @@ class MediaWorker:
         )
 
         def should_cancel() -> bool:
-            return (
-                self._stopping
-                or self._session_cancelled.is_set()
-                or self.cancellation.is_cancelled(task_id)
-            )
+            if self._stopping or self._session_cancelled.is_set():
+                return cancellation.cancel_locally()
+            return cancellation.should_cancel()
 
         def on_progress(
             progress: int,
@@ -910,6 +926,13 @@ class MediaWorker:
                 },
             )
         except SubtitleFailure as exc:
+            control_state = "active"
+            if exc.code == "subtitle_cancelled":
+                control_state = (
+                    cancellation.state
+                    if cancellation.state != "active"
+                    else "cancelled"
+                )
             return Envelope.create(
                 SUBTITLE_PROCESS_FAILED_V1,
                 request.subject,
@@ -919,6 +942,7 @@ class MediaWorker:
                     "code": exc.code,
                     "message": exc.message,
                     "retryable": exc.retryable,
+                    "control_state": control_state,
                 },
             )
 
@@ -959,6 +983,7 @@ class MediaWorker:
             ),
         )
         last_progress = 0
+        cancellation = CancellationLatch(self.cancellation, task_id)
 
         def report_progress(value: int) -> None:
             nonlocal last_progress
@@ -983,11 +1008,9 @@ class MediaWorker:
             )
 
         def should_cancel() -> bool:
-            return (
-                self._stopping
-                or self._session_cancelled.is_set()
-                or self.cancellation.is_cancelled(task_id)
-            )
+            if self._stopping or self._session_cancelled.is_set():
+                return cancellation.cancel_locally()
+            return cancellation.should_cancel()
 
         try:
             config = self.processing_config.get(task_id)
@@ -1022,6 +1045,9 @@ class MediaWorker:
                 },
             )
         except TranscodeCancelled as exc:
+            control_state = cancellation.state
+            if control_state == "active":
+                control_state = "cancelled"
             return Envelope.create(
                 TRANSCODE_CANCELLED_V1,
                 request.subject,
@@ -1030,6 +1056,7 @@ class MediaWorker:
                     "run_id": run_id,
                     "attempt": attempt,
                     "message": str(exc),
+                    "control_state": control_state,
                 },
             )
         except TranscodeFailure as exc:
@@ -1081,6 +1108,20 @@ def configure_logging(level: str) -> None:
         level=getattr(logging, level, logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+
+
+class persistent_task_directory:
+    """Keep yt-dlp partial files across retries and remove them after success."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def __enter__(self) -> str:
+        self.path.mkdir(parents=True, exist_ok=True)
+        return str(self.path)
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
+        return False
 
 
 def main() -> None:

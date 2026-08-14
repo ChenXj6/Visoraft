@@ -482,9 +482,9 @@ class SubtitleProcessor:
                     else "generated_subtitles"
                 ),
                 "translation_skipped": translation_skipped,
-                "burn_subtitles": bool(
-                    _object(config, "transcode").get("burn_subtitles")
-                ),
+                "burn_subtitles": False
+                if existing_soft_chinese
+                else bool(_object(config, "transcode").get("burn_subtitles")),
                 "detection": detection,
             },
         }

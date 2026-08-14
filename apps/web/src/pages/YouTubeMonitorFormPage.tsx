@@ -210,6 +210,27 @@ export default function YouTubeMonitorFormPage() {
     });
   }, [monitor.data]);
 
+  useEffect(() => {
+    if (!cookies.data || (editing && !monitor.data)) return;
+    const preferred =
+      cookies.data.items.find(
+        (profile) =>
+          profile.status === "ready" && /youtube|油管/i.test(profile.name)
+      ) ?? cookies.data.items.find((profile) => profile.status === "ready");
+    if (!preferred) return;
+    setDraft((current) =>
+      current.task_template.cookie_profile_id
+        ? current
+        : {
+            ...current,
+            task_template: {
+              ...current.task_template,
+              cookie_profile_id: preferred.id
+            }
+          }
+    );
+  }, [cookies.data, editing, monitor.data]);
+
   const save = useMutation({
     mutationFn: () => {
       const input = {
@@ -271,6 +292,9 @@ export default function YouTubeMonitorFormPage() {
     if (draft.rate_limit_requests < seriesRequestBudget) {
       readinessIssues.push(`将补漏请求上限提高到 ${seriesRequestBudget}`);
     }
+  }
+  if (!draft.task_template.cookie_profile_id) {
+    readinessIssues.push("选择 YouTube 下载 Cookie");
   }
 
   const setNumber = (key: keyof YouTubeMonitorInput, value: number) =>
@@ -975,8 +999,13 @@ export default function YouTubeMonitorFormPage() {
                 </span>
               </label>
             </div>
-            {draft.auto_add_to_tasks && (
-              <div className="monitor-task-options">
+            <div className="monitor-task-options">
+              <div className="settings-boundary-note">
+                <strong>后续任务默认配置</strong>
+                <span>
+                  无论稍后手动加入，还是发现后自动加入，都会使用下方的平台、下载 Cookie 与投稿策略。
+                </span>
+              </div>
                 <div className="monitor-check-grid">
               <CheckCard
                 checked={selectedPlatforms.has("bilibili")}
@@ -1055,13 +1084,21 @@ export default function YouTubeMonitorFormPage() {
                     })
                   }
                 >
-                  <option value="">不使用 Cookie</option>
+                  <option value="">请选择下载 Cookie</option>
                   {cookies.data?.items.map((profile) => (
                     <option value={profile.id} key={profile.id}>
                       {profile.name} · {statusLabel(profile.status)}
                     </option>
                   ))}
                 </select>
+                <small>
+                  用于实际下载视频流；系统会优先选择名称包含 YouTube 的可用配置。
+                </small>
+                {fields["task_template.cookie_profile_id"] && (
+                  <small className="field-error">
+                    {fields["task_template.cookie_profile_id"]}
+                  </small>
+                )}
               </label>
               <label className="field">
                 <span>转载声明</span>
@@ -1108,8 +1145,7 @@ export default function YouTubeMonitorFormPage() {
                 {fields["task_template.auto_publish"]}
               </p>
             )}
-              </div>
-            )}
+            </div>
           </FieldGroup>
         </div>
 

@@ -101,6 +101,9 @@ class MediaDownloader:
         last_byte_change_at = started_at
         last_downloaded = 0
         active_stream = ""
+        stream_downloaded: dict[str, int] = {}
+        stream_totals: dict[str, int] = {}
+        stream_exact: dict[str, bool] = {}
 
         def progress_hook(status: dict[str, Any]) -> None:
             nonlocal active_stream, last_byte_change_at, last_downloaded
@@ -127,6 +130,22 @@ class MediaDownloader:
                     ),
                 )
             )
+            is_finished = status.get("status") == "finished"
+            stream_downloaded[stream_key] = max(stream_downloaded.get(stream_key, 0), downloaded)
+            if is_finished and downloaded > 0:
+                stream_totals[stream_key] = downloaded
+                stream_exact[stream_key] = True
+            elif total > 0:
+                stream_totals[stream_key] = max(downloaded, total)
+                stream_exact[stream_key] = exact_total > 0
+            aggregate_downloaded = sum(stream_downloaded.values())
+            aggregate_total = sum(
+                max(value, stream_downloaded.get(key, 0))
+                for key, value in stream_totals.items()
+            )
+            aggregate_exact = bool(stream_totals) and all(
+                stream_exact.get(key, False) for key in stream_totals
+            )
             if stream_key != active_stream:
                 active_stream = stream_key
                 last_downloaded = downloaded
@@ -143,13 +162,20 @@ class MediaDownloader:
                     message="下载长时间没有收到新数据，已停止本次尝试以便安全重试",
                     retryable=True,
                 )
-            if downloaded > self._max_download_bytes:
+            if aggregate_downloaded > self._max_download_bytes:
                 raise DownloadFailure(
                     code="download_too_large",
                     message=f"source exceeds the {self._max_download_bytes} byte download limit",
                     retryable=False,
                 )
-            on_progress(_telemetry_from_status(status, downloaded, total, exact_total > 0))
+            on_progress(
+                _telemetry_from_status(
+                    status,
+                    aggregate_downloaded,
+                    aggregate_total,
+                    aggregate_exact,
+                )
+            )
 
         options: dict[str, Any] = {
             "quiet": True,

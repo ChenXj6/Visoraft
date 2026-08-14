@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import hashlib
+import tempfile
 import threading
 import unittest
+from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import ANY, Mock, call
 
-from visoraft_media.downloader import DownloadedFile
+from visoraft_media.downloader import DownloadCancelled, DownloadedFile
 from visoraft_media.events import (
     ASSETS_DELETED_V1,
     ASSETS_DELETE_REQUESTED_V1,
     DOWNLOAD_COMPLETED_V1,
+    DOWNLOAD_CANCELLED_V1,
     DOWNLOAD_REQUESTED_V1,
     MEDIA_INSPECT_FAILED_V1,
     METADATA_COMPLETED_V1,
@@ -297,6 +301,44 @@ class PublishTests(unittest.TestCase):
         self.assertEqual(result.data["code"], "media_probe_failed")
         self.assertEqual(result.data["attempt"], 2)
         self.assertFalse(result.data["retryable"])
+
+    def test_quick_resume_keeps_paused_reason_and_download_checkpoint(self) -> None:
+        task_id = "00000000-0000-4000-8000-000000000013"
+        request = Envelope.create(
+            DOWNLOAD_REQUESTED_V1,
+            f"task/{task_id}",
+            {
+                "task_id": task_id,
+                "source_url": "https://example.com/video",
+                "attempt": 3,
+            },
+        )
+        channel = Mock()
+        observed_states = iter(["paused", "active"])
+        self.worker.cancellation.is_cancelled = Mock(return_value=True)
+        self.worker.cancellation.last_state = Mock(side_effect=observed_states)
+
+        with tempfile.TemporaryDirectory() as raw_root:
+            self.worker.settings = replace(self.worker.settings, work_root=raw_root)
+
+            def pause_then_resume(_url, destination, _progress, should_cancel, _cookie):
+                checkpoint = destination / "source.mp4.part"
+                checkpoint.write_bytes(b"partial-media")
+                self.assertTrue(should_cancel())
+                # The API is active again before yt-dlp finishes unwinding.
+                self.worker.cancellation.is_cancelled.return_value = False
+                raise DownloadCancelled("download cancelled by user")
+
+            self.worker.downloader.download = Mock(side_effect=pause_then_resume)
+
+            result = self.worker._handle_download(channel, request)
+
+            checkpoint = Path(raw_root) / task_id / "download" / "source.mp4.part"
+            self.assertEqual(DOWNLOAD_CANCELLED_V1, result.type)
+            self.assertEqual("paused", result.data["control_state"])
+            self.assertTrue(checkpoint.exists())
+            self.assertEqual(b"partial-media", checkpoint.read_bytes())
+            self.worker.cancellation.last_state.assert_called_once_with(task_id)
 
     def test_transcode_handler_publishes_started_and_progress_before_result(
         self,

@@ -457,6 +457,7 @@ class SubtitleProcessorExistingChineseTests(unittest.TestCase):
             )
         self.assertEqual(result["decision"]["disposition"], "existing_soft_chinese")
         self.assertTrue(result["decision"]["translation_skipped"])
+        self.assertFalse(result["decision"]["burn_subtitles"])
         self.assertEqual(result["documents"][0]["source"], "embedded")
         processor._transcribe.assert_not_called()
         processor._translate.assert_not_called()

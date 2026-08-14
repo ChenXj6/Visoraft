@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "2.0-draft",
+  "name": "YouTube to China and Backup",
+  "trigger": {
+    "id": "source-youtube",
+    "type": "youtube.channel.video_published",
+    "connectionId": "conn_youtube_creator"
+  },
+  "nodes": [
+    {
+      "id": "filter-video",
+      "kind": "filter",
+      "type": "content.rules",
+      "config": {
+        "mediaTypes": ["video"],
+        "minDurationSeconds": 60
+      }
+    },
+    {
+      "id": "backup-original",
+      "kind": "backup",
+      "type": "google_drive.upload",
+      "connectionId": "conn_drive_archive",
+      "config": {
+        "folderId": "folder_originals"
+      }
+    },
+    {
+      "id": "localize",
+      "kind": "composite",
+      "type": "visoraft.localize_for_china",
+      "config": {
+        "targetLanguage": "zh-CN",
+        "subtitleMode": "review_then_burn"
+      }
+    },
+    {
+      "id": "approval",
+      "kind": "approval",
+      "type": "approval.single_stage",
+      "config": {
+        "deadlineHours": 24,
+        "onExpired": "do_not_publish"
+      }
+    },
+    {
+      "id": "publish-bilibili",
+      "kind": "destination",
+      "type": "bilibili.publish",
+      "connectionId": "conn_bilibili_official",
+      "config": {
+        "scheduleMode": "next_slot",
+        "profileId": "profile_bilibili_default"
+      }
+    }
+  ],
+  "edges": [
+    { "from": "source-youtube", "to": "filter-video" },
+    { "from": "filter-video", "to": "backup-original" },
+    { "from": "backup-original", "to": "localize" },
+    { "from": "localize", "to": "approval" },
+    { "from": "approval", "to": "publish-bilibili", "condition": "approved" }
+  ]
+}

@@ -99,6 +99,8 @@ func NewServer(
 		server.getAssetContent,
 	)
 	mux.HandleFunc("POST /api/v1/tasks/{taskID}/cancel", server.cancelTask)
+	mux.HandleFunc("POST /api/v1/tasks/{taskID}/pause", server.pauseTask)
+	mux.HandleFunc("POST /api/v1/tasks/{taskID}/resume", server.resumeTask)
 	mux.HandleFunc("POST /api/v1/tasks/{taskID}/retry", server.retryTask)
 	mux.HandleFunc("POST /api/v1/tasks/{taskID}/archive", server.archiveTask)
 	mux.HandleFunc("POST /api/v1/tasks/{taskID}/restore", server.restoreTask)
@@ -310,6 +312,22 @@ func (s *Server) getTask(writer http.ResponseWriter, request *http.Request) {
 func (s *Server) cancelTask(writer http.ResponseWriter, request *http.Request) {
 	task, err := s.service.Cancel(request.Context(), request.PathValue("taskID"))
 	if s.writeTaskActionError(writer, request, err, "task_cancel_failed", "任务取消失败") {
+		return
+	}
+	writeJSON(writer, http.StatusOK, task)
+}
+
+func (s *Server) pauseTask(writer http.ResponseWriter, request *http.Request) {
+	task, err := s.service.Pause(request.Context(), request.PathValue("taskID"))
+	if s.writeTaskActionError(writer, request, err, "task_pause_failed", "任务暂停失败") {
+		return
+	}
+	writeJSON(writer, http.StatusOK, task)
+}
+
+func (s *Server) resumeTask(writer http.ResponseWriter, request *http.Request) {
+	task, err := s.service.Resume(request.Context(), request.PathValue("taskID"))
+	if s.writeTaskActionError(writer, request, err, "task_resume_failed", "任务继续失败") {
 		return
 	}
 	writeJSON(writer, http.StatusOK, task)

@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -167,6 +168,17 @@ func (c *Consumer) runSession(ctx context.Context) error {
 				return fmt.Errorf("workflow delivery channel closed")
 			}
 			if err := c.handle(ctx, delivery.Body); err != nil {
+				if errors.Is(err, tasks.ErrNotFound) {
+					c.logger.Warn(
+						"discarding workflow event for deleted task",
+						"error", err,
+						"delivery_tag", delivery.DeliveryTag,
+					)
+					if ackErr := delivery.Ack(false); ackErr != nil {
+						return fmt.Errorf("ack stale workflow event: %w", ackErr)
+					}
+					continue
+				}
 				c.logger.Error("workflow event failed", "error", err, "delivery_tag", delivery.DeliveryTag)
 				if nackErr := delivery.Nack(false, true); nackErr != nil {
 					return fmt.Errorf("nack workflow event: %w", nackErr)
@@ -225,7 +237,11 @@ func (c *Consumer) handle(ctx context.Context, body []byte) error {
 		}
 		err = c.store.ApplyDownloadFailed(ctx, envelope, failure)
 	case downloadCancelledV1:
-		err = c.store.ApplyDownloadCancelled(ctx, envelope)
+		var event tasks.WorkflowCancellation
+		if decodeErr := json.Unmarshal(envelope.Data, &event); decodeErr != nil {
+			return fmt.Errorf("decode download cancellation: %w", decodeErr)
+		}
+		err = c.store.ApplyDownloadCancelled(ctx, envelope, event)
 	case mediaInspectStartedV1:
 		err = c.store.ApplyMediaInspectStarted(ctx, envelope)
 	case mediaInspectCompletedV1:
