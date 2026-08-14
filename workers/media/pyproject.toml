@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visoraft-media-worker"
+version = "0.1.0"
+description = "Visoraft yt-dlp and media metadata worker"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+dependencies = [
+  "boto3==1.43.51",
+  "pika==1.4.2",
+  "yt-dlp[default,pin-deno]==2026.7.4",
+]
+
+[project.scripts]
+visoraft-media-worker = "visoraft_media.worker:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,19 @@
+{
+  "name": "visoraft",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "pnpm --filter @visoraft/web dev",
+    "build": "pnpm --filter @visoraft/web build",
+    "typecheck": "pnpm --filter @visoraft/web typecheck",
+    "e2e:local": "node tests/e2e/local-smoke.cjs",
+    "e2e:operations": "node tests/e2e/operations-e2e.cjs",
+    "e2e:visual": "node tests/e2e/visual-audit.cjs",
+    "e2e:dark": "node tests/e2e/dark-mode-all-pages.cjs",
+    "e2e:all": "pnpm e2e:local && pnpm e2e:operations"
+  },
+  "devDependencies": {
+    "playwright": "1.61.1"
+  }
+}

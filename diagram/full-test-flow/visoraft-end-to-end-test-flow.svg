@@ -1,0 +1,320 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2200 5900" role="img" aria-labelledby="title desc">
+  <title id="title">Visoraft 全链路测试流程与分支验收</title>
+  <desc id="desc">从手工任务和 YouTube 监控开始，覆盖下载、字幕、审核、转码、Bilibili 与 AcFun 投稿以及失败恢复的完整测试流程。</desc>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#1e293b" stroke-width="0.6"/>
+    </pattern>
+    <marker id="arrow" markerWidth="12" markerHeight="9" refX="11" refY="4.5" orient="auto">
+      <polygon points="0 0,12 4.5,0 9" fill="#60a5fa"/>
+    </marker>
+    <marker id="arrow-muted" markerWidth="12" markerHeight="9" refX="11" refY="4.5" orient="auto">
+      <polygon points="0 0,12 4.5,0 9" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrow-error" markerWidth="12" markerHeight="9" refX="11" refY="4.5" orient="auto">
+      <polygon points="0 0,12 4.5,0 9" fill="#fb7185"/>
+    </marker>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap');
+      text { font-family: 'JetBrains Mono','Noto Sans SC','Microsoft YaHei','PingFang SC',sans-serif; }
+      .phase { fill: rgba(15,23,42,.62); stroke: #334155; stroke-width: 1.5; stroke-dasharray: 10 7; }
+      .phase-title { fill: #e2e8f0; font-size: 20px; font-weight: 700; }
+      .phase-sub { fill: #94a3b8; font-size: 13px; }
+      .box-mask { fill: #0f172a; }
+      .box { stroke-width: 2; }
+      .primary { fill: rgba(8,51,68,.52); stroke: #22d3ee; }
+      .secondary { fill: rgba(6,78,59,.48); stroke: #34d399; }
+      .tertiary { fill: rgba(76,29,149,.48); stroke: #a78bfa; }
+      .neutral { fill: rgba(30,41,59,.78); stroke: #94a3b8; }
+      .alert { fill: rgba(136,19,55,.5); stroke: #fb7185; }
+      .highlight { fill: rgba(59,130,246,.42); stroke: #60a5fa; }
+      .decision-mask { fill: #0f172a; }
+      .decision { fill: rgba(120,53,15,.48); stroke: #fbbf24; stroke-width: 2; }
+      .node-title { fill: #f8fafc; font-size: 15px; font-weight: 700; text-anchor: middle; }
+      .node-sub { fill: #cbd5e1; font-size: 12px; text-anchor: middle; }
+      .edge { fill: none; stroke: #60a5fa; stroke-width: 2.5; marker-end: url(#arrow); }
+      .edge-muted { fill: none; stroke: #94a3b8; stroke-width: 2; marker-end: url(#arrow-muted); }
+      .edge-error { fill: none; stroke: #fb7185; stroke-width: 2.3; stroke-dasharray: 8 6; marker-end: url(#arrow-error); }
+      .edge-label { fill: #cbd5e1; font-size: 12px; font-weight: 600; }
+      .yes { fill: #34d399; }
+      .no { fill: #fb7185; }
+      .badge-pass { fill: rgba(6,78,59,.85); stroke: #34d399; }
+      .badge-warn { fill: rgba(120,53,15,.8); stroke: #fbbf24; }
+      .badge-gap { fill: rgba(136,19,55,.8); stroke: #fb7185; }
+      .badge-text { fill: #f8fafc; font-size: 12px; font-weight: 700; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect width="2200" height="5900" fill="#0f172a"/>
+  <rect width="2200" height="5900" fill="url(#grid)"/>
+  <text x="60" y="48" fill="#f8fafc" font-size="28" font-weight="700">Visoraft 全链路测试流程与分支验收</text>
+  <text x="60" y="76" fill="#94a3b8" font-size="14">每个节点均要求：前端可操作 · 后台持久化 · 实际服务执行 · 联调 · 成功/失败/恢复证据</text>
+
+  <rect class="phase" x="40" y="105" width="2120" height="770" rx="18"/>
+  <text class="phase-title" x="70" y="143">01 任务入口与 YouTube 发现</text>
+  <text class="phase-sub" x="70" y="168">验证手工建单、全网检索、单频道、分类/指标、去重、失败恢复和自动建单策略</text>
+
+  <rect class="phase" x="40" y="905" width="2120" height="2225" rx="18"/>
+  <text class="phase-title" x="70" y="943">02 媒体、字幕、质检与转码</text>
+  <text class="phase-sub" x="70" y="968">验证 Cookie、下载遥测、断点恢复、ASR、字幕回退、模型批次、QC 与 LGPL FFmpeg</text>
+
+  <rect class="phase" x="40" y="3160" width="2120" height="1020" rx="18"/>
+  <text class="phase-title" x="70" y="3198">03 人工审核与自动审核</text>
+  <text class="phase-sub" x="70" y="3223">人工编辑/退回/重提/批准/放弃，以及自动规则通过、转人工、直接拒绝三条分支</text>
+
+  <rect class="phase" x="40" y="4210" width="2120" height="1580" rx="18"/>
+  <text class="phase-title" x="70" y="4248">04 投稿、平台回查与恢复</text>
+  <text class="phase-sub" x="70" y="4273">验证草稿、账号 Cookie、Bilibili/AcFun 上传、确定失败、结果不确定、平台审核和幂等重试</text>
+
+  <!-- connections: phase 1 -->
+  <path class="edge" d="M1100 232V252"/>
+  <path class="edge" d="M1000 300H530V340"/>
+  <text class="edge-label" x="720" y="288">手工任务</text>
+  <path class="edge" d="M1200 300H1670V340"/>
+  <text class="edge-label" x="1450" y="288">监控发现</text>
+  <path class="edge" d="M530 430V438"/>
+  <path class="edge-error" d="M430 500H300"/>
+  <text class="edge-label no" x="330" y="488">否</text>
+  <path class="edge-muted" d="M170 450V365H350"/>
+  <path class="edge" d="M630 500H850V790"/>
+  <text class="edge-label yes" x="655" y="488">是</text>
+  <path class="edge" d="M1670 430V448"/>
+  <path class="edge-error" d="M1770 510H1900"/>
+  <text class="edge-label no" x="1810" y="497">失败</text>
+  <path class="edge-muted" d="M2030 450V365H1850"/>
+  <path class="edge" d="M1670 572V595H1550"/>
+  <text class="edge-label yes" x="1618" y="584">成功</text>
+  <path class="edge-error" d="M1650 655H1880"/>
+  <text class="edge-label no" x="1720" y="643">过滤/重复</text>
+  <path class="edge" d="M1450 655H1300V688"/>
+  <text class="edge-label yes" x="1360" y="643">接收</text>
+  <path class="edge-muted" d="M1400 748H1580"/>
+  <text class="edge-label" x="1460" y="736">否</text>
+  <path class="edge" d="M1200 748H1100V790"/>
+  <text class="edge-label yes" x="1140" y="736">是</text>
+
+  <!-- connections: phase 2 -->
+  <path class="edge" d="M1100 855V978"/>
+  <path class="edge-error" d="M1200 1038H1510"/>
+  <text class="edge-label no" x="1330" y="1026">不一致</text>
+  <path class="edge-muted" d="M1730 978V940H1220"/>
+  <path class="edge" d="M1100 1098V1140"/>
+  <text class="edge-label yes" x="1115" y="1122">通过</text>
+  <path class="edge" d="M1100 1230V1248"/>
+  <path class="edge" d="M1100 1372V1390"/>
+  <text class="edge-label yes" x="1115" y="1385">成功</text>
+  <path class="edge-error" d="M1200 1310H1500"/>
+  <text class="edge-label no" x="1335" y="1298">失败</text>
+  <path class="edge-error" d="M1600 1310H1820"/>
+  <text class="edge-label no" x="1690" y="1298">需登录</text>
+  <path class="edge-muted" d="M1950 1250V1170H1270"/>
+  <path class="edge-error" d="M1500 1370H1820"/>
+  <text class="edge-label no" x="1630" y="1358">其他</text>
+  <path class="edge" d="M1100 1480V1498"/>
+  <path class="edge-error" d="M1200 1560H1500"/>
+  <text class="edge-label no" x="1325" y="1548">停滞/超时</text>
+  <path class="edge-muted" d="M1720 1500V1435H1270"/>
+  <path class="edge" d="M1100 1622V1660"/>
+  <text class="edge-label yes" x="1115" y="1642">持续推进</text>
+  <path class="edge" d="M1100 1750V1768"/>
+  <path class="edge-error" d="M1200 1830H1500"/>
+  <text class="edge-label no" x="1340" y="1818">无效</text>
+  <path class="edge" d="M1100 1892V1918"/>
+  <text class="edge-label yes" x="1115" y="1908">有效</text>
+  <path class="edge" d="M1000 1978H430V2040"/>
+  <path class="edge" d="M1040 2020H750V2040"/>
+  <path class="edge" d="M1160 2020H1280V2040"/>
+  <path class="edge-muted" d="M1200 1978H1810V2040"/>
+  <path class="edge" d="M430 2130V2320H760"/>
+  <path class="edge" d="M750 2130V2320"/>
+  <path class="edge" d="M1280 2130V2158"/>
+  <path class="edge" d="M1180 2220H980V2320"/>
+  <text class="edge-label yes" x="1085" y="2208">成功</text>
+  <path class="edge-error" d="M1380 2220H1400"/>
+  <text class="edge-label no" x="1385" y="2198">失败</text>
+  <path class="edge-muted" d="M1810 2130V2158"/>
+  <path class="edge-error" d="M1910 2220H2040"/>
+  <text class="edge-label no" x="1960" y="2208">阻断</text>
+  <path class="edge-muted" d="M1810 2282V2815H1300"/>
+  <text class="edge-label" x="1830" y="2440">允许无字幕继续</text>
+  <path class="edge" d="M870 2410V2440"/>
+  <path class="edge" d="M1000 2530H1100V2568"/>
+  <path class="edge" d="M1100 2692V2780"/>
+  <text class="edge-label yes" x="1115" y="2730">达标</text>
+  <path class="edge-error" d="M1200 2630H1510"/>
+  <text class="edge-label no" x="1330" y="2618">未达标</text>
+  <path class="edge" d="M1100 2870V2888"/>
+  <path class="edge-error" d="M1200 2950H1510"/>
+  <text class="edge-label no" x="1340" y="2938">失败</text>
+  <path class="edge" d="M1100 3012V3030"/>
+  <text class="edge-label yes" x="1115" y="3025">成功</text>
+
+  <!-- connections: phase 3 -->
+  <path class="edge" d="M1100 3118V3268"/>
+  <path class="edge-error" d="M1730 2675V3240H1200"/>
+  <text class="edge-label" x="1750" y="2890">QC 失败也进入审核策略</text>
+  <path class="edge" d="M1000 3330H500V3400"/>
+  <text class="edge-label" x="720" y="3318">人工</text>
+  <path class="edge" d="M1200 3330H1670V3400"/>
+  <text class="edge-label" x="1450" y="3318">自动</text>
+  <path class="edge" d="M500 3490V3518"/>
+  <path class="edge-error" d="M400 3580H190"/>
+  <text class="edge-label no" x="270" y="3568">退回修改</text>
+  <path class="edge-muted" d="M190 3535V3360H300"/>
+  <path class="edge" d="M600 3580H830"/>
+  <text class="edge-label yes" x="690" y="3568">批准</text>
+  <path class="edge-error" d="M500 3642V3740"/>
+  <text class="edge-label no" x="515" y="3695">放弃</text>
+  <path class="edge" d="M1670 3490V3518"/>
+  <path class="edge" d="M1570 3580H1330V3700"/>
+  <text class="edge-label yes" x="1440" y="3568">全部通过</text>
+  <path class="edge-error" d="M1770 3580H1900V3638"/>
+  <text class="edge-label no" x="1810" y="3568">规则失败</text>
+  <path class="edge" d="M1800 3700H1570V3830"/>
+  <text class="edge-label" x="1630" y="3688">转人工</text>
+  <path class="edge-error" d="M2000 3700H2050V3830"/>
+  <text class="edge-label no" x="2030" y="3760">直接拒绝</text>
+  <path class="edge-muted" d="M1570 3920H500V3400"/>
+  <path class="edge" d="M1050 3750V3990"/>
+  <path class="edge" d="M1440 3790H1180V3990"/>
+
+  <!-- connections: phase 4 -->
+  <path class="edge" d="M1100 4080V4308"/>
+  <path class="edge-muted" d="M1000 4370H520V4460"/>
+  <text class="edge-label" x="760" y="4358">否：保存待发布</text>
+  <path class="edge" d="M1100 4432V4460"/>
+  <text class="edge-label yes" x="1115" y="4448">是</text>
+  <path class="edge" d="M740 4505H900"/>
+  <text class="edge-label" x="760" y="4492">人工点击开始</text>
+  <path class="edge" d="M1100 4550V4568"/>
+  <path class="edge" d="M1000 4630H700V4720"/>
+  <path class="edge" d="M1200 4630H1500V4720"/>
+  <path class="edge" d="M700 4810V4838"/>
+  <path class="edge" d="M1500 4810V4838"/>
+  <path class="edge-error" d="M600 4900H270"/>
+  <path class="edge-error" d="M1600 4900H1900"/>
+  <text class="edge-label no" x="410" y="4888">未就绪</text>
+  <text class="edge-label no" x="1735" y="4888">未就绪</text>
+  <path class="edge-muted" d="M270 4845V4745H550"/>
+  <path class="edge-muted" d="M2030 4845V4745H1650"/>
+  <path class="edge" d="M700 4962V5000"/>
+  <path class="edge" d="M1500 4962V5000"/>
+  <text class="edge-label yes" x="715" y="4984">就绪</text>
+  <text class="edge-label yes" x="1515" y="4984">就绪</text>
+  <path class="edge" d="M700 5090V5140H1000"/>
+  <path class="edge" d="M1500 5090V5140H1200"/>
+  <path class="edge" d="M1100 5262V5290"/>
+  <path class="edge-error" d="M1000 5200H430V5290"/>
+  <text class="edge-label no" x="690" y="5188">结果不确定</text>
+  <path class="edge-error" d="M1200 5200H1660V5290"/>
+  <text class="edge-label no" x="1410" y="5188">确定失败</text>
+  <path class="edge" d="M1100 5380V5408"/>
+  <text class="edge-label yes" x="1115" y="5398">平台已接收</text>
+  <path class="edge-muted" d="M430 5380V5408"/>
+  <path class="edge" d="M330 5470H220V5580"/>
+  <text class="edge-label yes" x="245" y="5458">找到稿件</text>
+  <path class="edge-muted" d="M530 5470H650V5580"/>
+  <text class="edge-label" x="570" y="5458">确认没有</text>
+  <path class="edge-muted" d="M820 5625H1650V5045"/>
+  <text class="edge-label" x="1120" y="5612">幂等安全重投</text>
+  <path class="edge-muted" d="M1660 5380V5580"/>
+  <path class="edge" d="M1000 5470H900V5580"/>
+  <text class="edge-label yes" x="925" y="5458">公开/已发布</text>
+  <path class="edge-error" d="M1200 5470H1410V5580"/>
+  <text class="edge-label no" x="1260" y="5458">平台拒绝/隐藏</text>
+
+  <!-- nodes: phase 1 -->
+  <g><rect class="box-mask" x="980" y="172" width="240" height="60" rx="30"/><rect class="box highlight" x="980" y="172" width="240" height="60" rx="30"/><text class="node-title" x="1100" y="208">开始测试</text></g>
+  <g><polygon class="decision-mask" points="1100,240 1200,300 1100,360 1000,300"/><polygon class="decision" points="1100,240 1200,300 1100,360 1000,300"/><text class="node-title" x="1100" y="295">任务从哪里来？</text><text class="node-sub" x="1100" y="316">手工 / 监控</text></g>
+  <g><rect class="box-mask" x="350" y="340" width="360" height="90" rx="10"/><rect class="box primary" x="350" y="340" width="360" height="90" rx="10"/><text class="node-title" x="530" y="374">React 新建任务</text><text class="node-sub" x="530" y="398">URL · 平台 · Cookie · 流程预设</text></g>
+  <g><polygon class="decision-mask" points="530,438 630,500 530,562 430,500"/><polygon class="decision" points="530,438 630,500 530,562 430,500"/><text class="node-title" x="530" y="495">输入与配置有效？</text><text class="node-sub" x="530" y="516">前后端同规则</text></g>
+  <g><rect class="box-mask" x="70" y="440" width="230" height="90" rx="10"/><rect class="box alert" x="70" y="440" width="230" height="90" rx="10"/><text class="node-title" x="185" y="474">阻止创建</text><text class="node-sub" x="185" y="498">字段错误可定位并修正</text></g>
+  <g><rect class="box-mask" x="1490" y="340" width="360" height="90" rx="10"/><rect class="box primary" x="1490" y="340" width="360" height="90" rx="10"/><text class="node-title" x="1670" y="374">YouTube 监控配置</text><text class="node-sub" x="1670" y="398">全网 / 单频道 / 分类 / 指标</text></g>
+  <g><polygon class="decision-mask" points="1670,448 1770,510 1670,572 1570,510"/><polygon class="decision" points="1670,448 1770,510 1670,572 1570,510"/><text class="node-title" x="1670" y="505">Data API 成功？</text><text class="node-sub" x="1670" y="526">凭证 · 配额 · 网络</text></g>
+  <g><rect class="box-mask" x="1900" y="455" width="260" height="90" rx="10"/><rect class="box alert" x="1900" y="455" width="260" height="90" rx="10"/><text class="node-title" x="2030" y="489">失败可恢复</text><text class="node-sub" x="2030" y="513">中文原因 · 修改后重跑</text></g>
+  <g><polygon class="decision-mask" points="1550,595 1650,655 1550,715 1450,655"/><polygon class="decision" points="1550,595 1650,655 1550,715 1450,655"/><text class="node-title" x="1550" y="650">筛选与去重通过？</text><text class="node-sub" x="1550" y="671">关键词 · 类型 · 时长 · 指标</text></g>
+  <g><rect class="box-mask" x="1880" y="610" width="270" height="90" rx="10"/><rect class="box neutral" x="1880" y="610" width="270" height="90" rx="10"/><text class="node-title" x="2015" y="644">记录但不建单</text><text class="node-sub" x="2015" y="668">保存过滤/重复原因</text></g>
+  <g><polygon class="decision-mask" points="1300,688 1400,748 1300,808 1200,748"/><polygon class="decision" points="1300,688 1400,748 1300,808 1200,748"/><text class="node-title" x="1300" y="743">自动加入任务？</text><text class="node-sub" x="1300" y="764">监控策略</text></g>
+  <g><rect class="box-mask" x="1580" y="710" width="270" height="80" rx="10"/><rect class="box neutral" x="1580" y="710" width="270" height="80" rx="10"/><text class="node-title" x="1715" y="744">仅保留发现记录</text><text class="node-sub" x="1715" y="768">task_id = null</text></g>
+  <g><rect class="box-mask" x="850" y="790" width="500" height="65" rx="12"/><rect class="box tertiary" x="850" y="790" width="500" height="65" rx="12"/><text class="node-title" x="1100" y="819">统一任务服务持久化</text><text class="node-sub" x="1100" y="841">PostgreSQL · 配置快照 · Outbox · 幂等键</text></g>
+
+  <!-- nodes: phase 2 -->
+  <g><polygon class="decision-mask" points="1100,978 1200,1038 1100,1098 1000,1038"/><polygon class="decision" points="1100,978 1200,1038 1100,1098 1000,1038"/><text class="node-title" x="1100" y="1033">ASR 语言一致？</text><text class="node-sub" x="1100" y="1054">源语言 / language_hints</text></g>
+  <g><rect class="box-mask" x="1510" y="970" width="440" height="90" rx="10"/><rect class="box alert" x="1510" y="970" width="440" height="90" rx="10"/><text class="node-title" x="1730" y="1004">422 阻止错误配置</text><text class="node-sub" x="1730" y="1028">包含源语言或改为 auto，再建新任务</text></g>
+  <g><rect class="box-mask" x="930" y="1140" width="340" height="90" rx="10"/><rect class="box primary" x="930" y="1140" width="340" height="90" rx="10"/><text class="node-title" x="1100" y="1174">读取真实元数据</text><text class="node-sub" x="1100" y="1198">yt-dlp · Cookie · 标题/封面/时长</text></g>
+  <g><polygon class="decision-mask" points="1100,1248 1200,1310 1100,1372 1000,1310"/><polygon class="decision" points="1100,1248 1200,1310 1100,1372 1000,1310"/><text class="node-title" x="1100" y="1305">元数据成功？</text><text class="node-sub" x="1100" y="1326">认证与提取</text></g>
+  <g><polygon class="decision-mask" points="1500,1248 1600,1310 1500,1372 1400,1310"/><polygon class="decision" points="1500,1248 1600,1310 1500,1372 1400,1310"/><text class="node-title" x="1500" y="1305">需要 Cookie？</text><text class="node-sub" x="1500" y="1326">机器人/登录校验</text></g>
+  <g><rect class="box-mask" x="1820" y="1215" width="330" height="90" rx="10"/><rect class="box secondary" x="1820" y="1215" width="330" height="90" rx="10"/><text class="node-title" x="1985" y="1249">CookieCloud / 文件修复</text><text class="node-sub" x="1985" y="1273">同步、上传、状态检查后重试</text></g>
+  <g><rect class="box-mask" x="1820" y="1335" width="330" height="90" rx="10"/><rect class="box alert" x="1820" y="1335" width="330" height="90" rx="10"/><text class="node-title" x="1985" y="1369">错误分类</text><text class="node-sub" x="1985" y="1393">可重试 / 永久失败 / 取消</text></g>
+  <g><rect class="box-mask" x="900" y="1390" width="400" height="90" rx="10"/><rect class="box primary" x="900" y="1390" width="400" height="90" rx="10"/><text class="node-title" x="1100" y="1424">下载媒体</text><text class="node-sub" x="1100" y="1448">速度 · 文件大小 · ETA · 心跳</text></g>
+  <g><polygon class="decision-mask" points="1100,1498 1200,1560 1100,1622 1000,1560"/><polygon class="decision" points="1100,1498 1200,1560 1100,1622 1000,1560"/><text class="node-title" x="1100" y="1555">下载持续推进？</text><text class="node-sub" x="1100" y="1576">非伪进度</text></g>
+  <g><rect class="box-mask" x="1500" y="1490" width="440" height="100" rx="10"/><rect class="box alert" x="1500" y="1490" width="440" height="100" rx="10"/><text class="node-title" x="1720" y="1524">停滞恢复</text><text class="node-sub" x="1720" y="1548">断点续传 · 分片重试 · 总超时</text><text class="node-sub" x="1720" y="1570">继续 / 重试 / 取消</text></g>
+  <g><rect class="box-mask" x="900" y="1660" width="400" height="90" rx="10"/><rect class="box primary" x="900" y="1660" width="400" height="90" rx="10"/><text class="node-title" x="1100" y="1694">FFprobe 媒体检测</text><text class="node-sub" x="1100" y="1718">容器 · 编码 · 分辨率 · 音视频流</text></g>
+  <g><polygon class="decision-mask" points="1100,1768 1200,1830 1100,1892 1000,1830"/><polygon class="decision" points="1100,1768 1200,1830 1100,1892 1000,1830"/><text class="node-title" x="1100" y="1825">媒体有效？</text><text class="node-sub" x="1100" y="1846">可处理且资产可校验</text></g>
+  <g><rect class="box-mask" x="1500" y="1740" width="440" height="95" rx="10"/><rect class="box alert" x="1500" y="1740" width="440" height="95" rx="10"/><text class="node-title" x="1720" y="1775">媒体失败</text><text class="node-sub" x="1720" y="1799">明确错误 · 单步重试 · 取消</text></g>
+  <g><polygon class="decision-mask" points="1100,1918 1200,1978 1100,2038 1000,1978"/><polygon class="decision" points="1100,1918 1200,1978 1100,2038 1000,1978"/><text class="node-title" x="1100" y="1973">字幕来源策略</text><text class="node-sub" x="1100" y="1994">优先级与回退</text></g>
+  <g><rect class="box-mask" x="280" y="2040" width="300" height="90" rx="10"/><rect class="box secondary" x="280" y="2040" width="300" height="90" rx="10"/><text class="node-title" x="430" y="2074">YouTube 人工字幕</text><text class="node-sub" x="430" y="2098">存在则优先使用</text></g>
+  <g><rect class="box-mask" x="610" y="2040" width="280" height="90" rx="10"/><rect class="box secondary" x="610" y="2040" width="280" height="90" rx="10"/><text class="node-title" x="750" y="2074">YouTube 自动字幕</text><text class="node-sub" x="750" y="2098">按设置允许才采用</text></g>
+  <g><rect class="box-mask" x="1110" y="2040" width="340" height="90" rx="10"/><rect class="box primary" x="1110" y="2040" width="340" height="90" rx="10"/><text class="node-title" x="1280" y="2074">Paraformer ASR</text><text class="node-sub" x="1280" y="2098">异步任务 · 临时 OSS · 检查点</text></g>
+  <g><rect class="box-mask" x="1640" y="2040" width="340" height="90" rx="10"/><rect class="box neutral" x="1640" y="2040" width="340" height="90" rx="10"/><text class="node-title" x="1810" y="2074">没有字幕</text><text class="node-sub" x="1810" y="2098">按策略跳过或阻断</text></g>
+  <g><polygon class="decision-mask" points="1280,2158 1380,2220 1280,2282 1180,2220"/><polygon class="decision" points="1280,2158 1380,2220 1280,2282 1180,2220"/><text class="node-title" x="1280" y="2215">ASR 完成？</text><text class="node-sub" x="1280" y="2236">轮询与超时</text></g>
+  <g><rect class="box-mask" x="1400" y="2165" width="280" height="110" rx="10"/><rect class="box alert" x="1400" y="2165" width="280" height="110" rx="10"/><text class="node-title" x="1540" y="2199">ASR / 模型恢复</text><text class="node-sub" x="1540" y="2223">复用检查点 · 批次二分</text><text class="node-sub" x="1540" y="2245">耗尽 → 人工/失败</text></g>
+  <g><polygon class="decision-mask" points="1810,2158 1910,2220 1810,2282 1710,2220"/><polygon class="decision" points="1810,2158 1910,2220 1810,2282 1710,2220"/><text class="node-title" x="1810" y="2215">允许无字幕？</text><text class="node-sub" x="1810" y="2236">任务预设</text></g>
+  <g><rect class="box-mask" x="2030" y="2175" width="120" height="90" rx="10"/><rect class="box alert" x="2030" y="2175" width="120" height="90" rx="10"/><text class="node-title" x="2090" y="2210">阻断</text><text class="node-sub" x="2090" y="2234">待修复</text></g>
+  <g><rect class="box-mask" x="650" y="2320" width="440" height="90" rx="10"/><rect class="box primary" x="650" y="2320" width="440" height="90" rx="10"/><text class="node-title" x="870" y="2354">字幕后处理</text><text class="node-sub" x="870" y="2378">清洗 · 时间轴 · 标点 · 行宽</text></g>
+  <g><rect class="box-mask" x="780" y="2440" width="440" height="90" rx="10"/><rect class="box primary" x="780" y="2440" width="440" height="90" rx="10"/><text class="node-title" x="1000" y="2474">智能分段与翻译</text><text class="node-sub" x="1000" y="2498">专用模型覆盖 · 批次遥测 · 超时拆分</text></g>
+  <g><polygon class="decision-mask" points="1100,2568 1200,2630 1100,2692 1000,2630"/><polygon class="decision" points="1100,2568 1200,2630 1100,2692 1000,2630"/><text class="node-title" x="1100" y="2625">字幕 QC 达标？</text><text class="node-sub" x="1100" y="2646">确定性 + AI 质检</text></g>
+  <g><rect class="box-mask" x="1510" y="2575" width="440" height="100" rx="10"/><rect class="box alert" x="1510" y="2575" width="440" height="100" rx="10"/><text class="node-title" x="1730" y="2609">保留失败证据</text><text class="node-sub" x="1730" y="2633">分数 · 警告 · 规则轨迹</text><text class="node-sub" x="1730" y="2655">按审核策略转人工或拒绝</text></g>
+  <g><rect class="box-mask" x="900" y="2780" width="400" height="90" rx="10"/><rect class="box primary" x="900" y="2780" width="400" height="90" rx="10"/><text class="node-title" x="1100" y="2814">FFmpeg 转码</text><text class="node-sub" x="1100" y="2838">预设 · 字幕烧录 · 进度 · 取消</text></g>
+  <g><polygon class="decision-mask" points="1100,2888 1200,2950 1100,3012 1000,2950"/><polygon class="decision" points="1100,2888 1200,2950 1100,3012 1000,2950"/><text class="node-title" x="1100" y="2945">转码成功？</text><text class="node-sub" x="1100" y="2966">LGPL 构建边界</text></g>
+  <g><rect class="box-mask" x="1510" y="2890" width="440" height="100" rx="10"/><rect class="box alert" x="1510" y="2890" width="440" height="100" rx="10"/><text class="node-title" x="1730" y="2924">转码恢复</text><text class="node-sub" x="1730" y="2948">超时/资源/参数分类</text><text class="node-sub" x="1730" y="2970">单步重试 · 取消 · 保留日志</text></g>
+  <g><rect class="box-mask" x="900" y="3030" width="400" height="88" rx="10"/><rect class="box tertiary" x="900" y="3030" width="400" height="88" rx="10"/><text class="node-title" x="1100" y="3064">版本化媒体产物</text><text class="node-sub" x="1100" y="3088">对象存储 · SHA-256 · 可追溯来源</text></g>
+
+  <!-- nodes: phase 3 -->
+  <g><polygon class="decision-mask" points="1100,3268 1200,3330 1100,3392 1000,3330"/><polygon class="decision" points="1100,3268 1200,3330 1100,3392 1000,3330"/><text class="node-title" x="1100" y="3325">审核模式？</text><text class="node-sub" x="1100" y="3346">任务快照冻结策略</text></g>
+  <g><rect class="box-mask" x="300" y="3400" width="400" height="90" rx="10"/><rect class="box primary" x="300" y="3400" width="400" height="90" rx="10"/><text class="node-title" x="500" y="3434">人工审核工作台</text><text class="node-sub" x="500" y="3458">媒体 · 元数据 · 字幕 · QC · 版本</text></g>
+  <g><polygon class="decision-mask" points="500,3518 600,3580 500,3642 400,3580"/><polygon class="decision" points="500,3518 600,3580 500,3642 400,3580"/><text class="node-title" x="500" y="3575">人工判定</text><text class="node-sub" x="500" y="3596">批准/退回/放弃</text></g>
+  <g><rect class="box-mask" x="70" y="3495" width="240" height="80" rx="10"/><rect class="box neutral" x="70" y="3495" width="240" height="80" rx="10"/><text class="node-title" x="190" y="3529">修改后重提</text><text class="node-sub" x="190" y="3553">形成新版本并复核</text></g>
+  <g><rect class="box-mask" x="830" y="3535" width="310" height="90" rx="10"/><rect class="box secondary" x="830" y="3535" width="310" height="90" rx="10"/><text class="node-title" x="985" y="3569">人工批准</text><text class="node-sub" x="985" y="3593">进入待发布</text></g>
+  <g><rect class="box-mask" x="340" y="3740" width="320" height="80" rx="10"/><rect class="box alert" x="340" y="3740" width="320" height="80" rx="10"/><text class="node-title" x="500" y="3774">放弃任务</text><text class="node-sub" x="500" y="3798">审计保留，可归档清理</text></g>
+  <g><rect class="box-mask" x="1450" y="3400" width="440" height="90" rx="10"/><rect class="box primary" x="1450" y="3400" width="440" height="90" rx="10"/><text class="node-title" x="1670" y="3434">执行自动规则</text><text class="node-sub" x="1670" y="3458">媒体 · 标题 · 简介 · 时长 · 字幕 QC</text></g>
+  <g><polygon class="decision-mask" points="1670,3518 1770,3580 1670,3642 1570,3580"/><polygon class="decision" points="1670,3518 1770,3580 1670,3642 1570,3580"/><text class="node-title" x="1670" y="3575">全部规则通过？</text><text class="node-sub" x="1670" y="3596">逐条保存证据</text></g>
+  <g><rect class="box-mask" x="1230" y="3700" width="320" height="90" rx="10"/><rect class="box secondary" x="1230" y="3700" width="320" height="90" rx="10"/><text class="node-title" x="1390" y="3734">自动批准</text><text class="node-sub" x="1390" y="3758">automatic_approve</text></g>
+  <g><polygon class="decision-mask" points="1900,3638 2000,3700 1900,3762 1800,3700"/><polygon class="decision" points="1900,3638 2000,3700 1900,3762 1800,3700"/><text class="node-title" x="1900" y="3695">失败策略？</text><text class="node-sub" x="1900" y="3716">转人工/拒绝</text></g>
+  <g><rect class="box-mask" x="1400" y="3830" width="340" height="90" rx="10"/><rect class="box primary" x="1400" y="3830" width="340" height="90" rx="10"/><text class="node-title" x="1570" y="3864">转人工审核</text><text class="node-sub" x="1570" y="3888">automatic_fallback</text></g>
+  <g><rect class="box-mask" x="1930" y="3830" width="220" height="90" rx="10"/><rect class="box alert" x="1930" y="3830" width="220" height="90" rx="10"/><text class="node-title" x="2040" y="3864">直接拒绝</text><text class="node-sub" x="2040" y="3888">automatic_reject</text></g>
+  <g><rect class="box-mask" x="850" y="3990" width="500" height="90" rx="12"/><rect class="box secondary" x="850" y="3990" width="500" height="90" rx="12"/><text class="node-title" x="1100" y="4024">ready_to_publish</text><text class="node-sub" x="1100" y="4048">审核通过不等于平台已投稿</text></g>
+
+  <!-- nodes: phase 4 -->
+  <g><polygon class="decision-mask" points="1100,4308 1200,4370 1100,4432 1000,4370"/><polygon class="decision" points="1100,4308 1200,4370 1100,4432 1000,4370"/><text class="node-title" x="1100" y="4365">自动投稿？</text><text class="node-sub" x="1100" y="4386">任务/策略开关</text></g>
+  <g><rect class="box-mask" x="300" y="4460" width="440" height="90" rx="10"/><rect class="box neutral" x="300" y="4460" width="440" height="90" rx="10"/><text class="node-title" x="520" y="4494">保存草稿，等待人工开始</text><text class="node-sub" x="520" y="4518">可编辑分区、标签、封面和策略</text></g>
+  <g><rect class="box-mask" x="900" y="4460" width="400" height="90" rx="10"/><rect class="box primary" x="900" y="4460" width="400" height="90" rx="10"/><text class="node-title" x="1100" y="4494">准备平台草稿</text><text class="node-sub" x="1100" y="4518">冻结媒体、元数据与平台配置</text></g>
+  <g><polygon class="decision-mask" points="1100,4568 1200,4630 1100,4692 1000,4630"/><polygon class="decision" points="1100,4568 1200,4630 1100,4692 1000,4630"/><text class="node-title" x="1100" y="4625">目标平台</text><text class="node-sub" x="1100" y="4646">可单选或双平台</text></g>
+  <g><rect class="box-mask" x="550" y="4720" width="300" height="90" rx="10"/><rect class="box primary" x="550" y="4720" width="300" height="90" rx="10"/><text class="node-title" x="700" y="4754">Bilibili 适配器</text><text class="node-sub" x="700" y="4778">分类 · 标签 · 封面 · 分P</text></g>
+  <g><rect class="box-mask" x="1350" y="4720" width="300" height="90" rx="10"/><rect class="box primary" x="1350" y="4720" width="300" height="90" rx="10"/><text class="node-title" x="1500" y="4754">AcFun 适配器</text><text class="node-sub" x="1500" y="4778">频道 · 标签 · 封面 · 分P</text></g>
+  <g><polygon class="decision-mask" points="700,4838 800,4900 700,4962 600,4900"/><polygon class="decision" points="700,4838 800,4900 700,4962 600,4900"/><text class="node-title" x="700" y="4895">账号就绪？</text><text class="node-sub" x="700" y="4916">Cookie 实时检查</text></g>
+  <g><polygon class="decision-mask" points="1500,4838 1600,4900 1500,4962 1400,4900"/><polygon class="decision" points="1500,4838 1600,4900 1500,4962 1400,4900"/><text class="node-title" x="1500" y="4895">账号就绪？</text><text class="node-sub" x="1500" y="4916">Cookie 实时检查</text></g>
+  <g><rect class="box-mask" x="80" y="4800" width="380" height="90" rx="10"/><rect class="box alert" x="80" y="4800" width="380" height="90" rx="10"/><text class="node-title" x="270" y="4834">同步/重新登录</text><text class="node-sub" x="270" y="4858">CookieCloud · 文件 · 二维码</text></g>
+  <g><rect class="box-mask" x="1740" y="4800" width="410" height="90" rx="10"/><rect class="box alert" x="1740" y="4800" width="410" height="90" rx="10"/><text class="node-title" x="1945" y="4834">同步/重新登录</text><text class="node-sub" x="1945" y="4858">CookieCloud · 文件 · 二维码</text></g>
+  <g><rect class="box-mask" x="550" y="5000" width="300" height="90" rx="10"/><rect class="box secondary" x="550" y="5000" width="300" height="90" rx="10"/><text class="node-title" x="700" y="5034">真实上传并提交</text><text class="node-sub" x="700" y="5058">进度 · 超时 · 幂等锁</text></g>
+  <g><rect class="box-mask" x="1350" y="5000" width="300" height="90" rx="10"/><rect class="box secondary" x="1350" y="5000" width="300" height="90" rx="10"/><text class="node-title" x="1500" y="5034">真实上传并提交</text><text class="node-sub" x="1500" y="5058">进度 · 超时 · 幂等锁</text></g>
+  <g><polygon class="decision-mask" points="1100,5138 1200,5200 1100,5262 1000,5200"/><polygon class="decision" points="1100,5138 1200,5200 1100,5262 1000,5200"/><text class="node-title" x="1100" y="5195">提交结果明确？</text><text class="node-sub" x="1100" y="5216">响应/网络/回查</text></g>
+  <g><rect class="box-mask" x="260" y="5290" width="340" height="90" rx="10"/><rect class="box alert" x="260" y="5290" width="340" height="90" rx="10"/><text class="node-title" x="430" y="5324">reconciliation_required</text><text class="node-sub" x="430" y="5348">禁止直接重复投稿</text></g>
+  <g><rect class="box-mask" x="1500" y="5290" width="320" height="90" rx="10"/><rect class="box alert" x="1500" y="5290" width="320" height="90" rx="10"/><text class="node-title" x="1660" y="5324">确定失败</text><text class="node-sub" x="1660" y="5348">修复后重试或取消</text></g>
+  <g><rect class="box-mask" x="900" y="5290" width="400" height="90" rx="10"/><rect class="box secondary" x="900" y="5290" width="400" height="90" rx="10"/><text class="node-title" x="1100" y="5324">平台已接收</text><text class="node-sub" x="1100" y="5348">保存稿件号、URL、响应证据</text></g>
+  <g><polygon class="decision-mask" points="430,5408 530,5470 430,5532 330,5470"/><polygon class="decision" points="430,5408 530,5470 430,5532 330,5470"/><text class="node-title" x="430" y="5465">平台找到稿件？</text><text class="node-sub" x="430" y="5486">人工对账</text></g>
+  <g><polygon class="decision-mask" points="1100,5408 1200,5470 1100,5532 1000,5470"/><polygon class="decision" points="1100,5408 1200,5470 1100,5532 1000,5470"/><text class="node-title" x="1100" y="5465">平台审核终态</text><text class="node-sub" x="1100" y="5486">接收 ≠ 已公开</text></g>
+  <g><rect class="box-mask" x="80" y="5580" width="280" height="90" rx="10"/><rect class="box secondary" x="80" y="5580" width="280" height="90" rx="10"/><text class="node-title" x="220" y="5614">登记已存在稿件</text><text class="node-sub" x="220" y="5638">不重复上传</text></g>
+  <g><rect class="box-mask" x="490" y="5580" width="330" height="90" rx="10"/><rect class="box neutral" x="490" y="5580" width="330" height="90" rx="10"/><text class="node-title" x="655" y="5614">确认未创建后重投</text><text class="node-sub" x="655" y="5638">二次确认 + 幂等保护</text></g>
+  <g><rect class="box-mask" x="860" y="5580" width="400" height="90" rx="30"/><rect class="box secondary" x="860" y="5580" width="400" height="90" rx="30"/><text class="node-title" x="1060" y="5614">发布闭环成功</text><text class="node-sub" x="1060" y="5638">远端可核验 + 本地审计一致</text></g>
+  <g><rect class="box-mask" x="1370" y="5580" width="370" height="90" rx="10"/><rect class="box alert" x="1370" y="5580" width="370" height="90" rx="10"/><text class="node-title" x="1555" y="5614">平台拒绝/不可见</text><text class="node-sub" x="1555" y="5638">修订稿件、重提或放弃</text></g>
+
+  <!-- legend and current test status -->
+  <g transform="translate(80,5730)">
+    <rect x="0" y="0" width="2040" height="120" rx="14" fill="rgba(30,41,59,.9)" stroke="#475569"/>
+    <rect class="badge-pass" x="25" y="24" width="170" height="34" rx="17"/><text class="badge-text" x="110" y="46">今日已通过</text>
+    <text x="215" y="46" fill="#cbd5e1" font-size="13">基础检查 · 自动审核三分支 · 视觉审计 · 审核页桌面/移动 · 真实 YouTube 监控 UI</text>
+    <rect class="badge-gap" x="25" y="70" width="170" height="34" rx="17"/><text class="badge-text" x="110" y="92">仍未全绿</text>
+    <text x="215" y="92" fill="#cbd5e1" font-size="13">2 个旧字幕 E2E 状态耦合失败；付费恢复、AcFun、平台终态回查与真实成功 ASR/QC 尚待执行</text>
+  </g>
+</svg>

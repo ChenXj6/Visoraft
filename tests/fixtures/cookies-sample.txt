@@ -1,0 +1,4 @@
+# Netscape HTTP Cookie File
+# Synthetic fixture for local integration tests. It does not contain a real login.
+.example.com	TRUE	/	FALSE	1893456000	visoraft_test	1
+.youtube.com	TRUE	/	TRUE	1893456000	PREF	hl=zh-CN

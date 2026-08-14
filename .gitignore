@@ -1,0 +1,60 @@
+# Secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+cookies.txt
+*.cookies.txt
+!tests/fixtures/cookies-sample.txt
+
+# Local runtime data and evidence
+artifacts/
+test-artifacts/
+data/
+storage/
+backups/
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Dependencies, builds and caches
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+bin/
+coverage/
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+**/*.egg-info/
+.pytest_cache/
+**/.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.cache/
+
+# Local test reports and rendered working files
+docs/TEST_STATUS_*.md
+docs/*_TEST_*.md
+diagram/**/*.png
+
+# Editors, operating systems and temporary files
+.idea/
+.vscode/
+.run/
+*.tmp
+*.swp
+*.bg!
+.DS_Store
+Thumbs.db

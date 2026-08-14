@@ -1,0 +1,290 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2600 3500">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#1e293b" stroke-width="0.6"/>
+    </pattern>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-ok" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#34d399"/>
+    </marker>
+    <marker id="arrow-warn" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#fbbf24"/>
+    </marker>
+    <marker id="arrow-bad" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#fb7185"/>
+    </marker>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap');
+      text { font-family:'JetBrains Mono','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif; }
+      .title { fill:#f8fafc; font-size:28px; font-weight:700; }
+      .subtitle { fill:#94a3b8; font-size:14px; }
+      .phase { fill:#e2e8f0; font-size:19px; font-weight:700; }
+      .phase-no { fill:#22d3ee; font-size:13px; font-weight:700; letter-spacing:1px; }
+      .label { fill:#f8fafc; font-size:15px; font-weight:600; text-anchor:middle; }
+      .sub { fill:#cbd5e1; font-size:12px; text-anchor:middle; }
+      .tiny { fill:#94a3b8; font-size:12px; text-anchor:middle; }
+      .edge-label { fill:#cbd5e1; font-size:12px; font-weight:600; }
+      .yes { fill:#34d399; }
+      .no { fill:#fb7185; }
+      .note { fill:#cbd5e1; font-size:13px; }
+      .box { fill:#0f172a; stroke-width:1.7; }
+      .process { fill:rgba(8,51,68,.55); stroke:#22d3ee; }
+      .service { fill:rgba(6,78,59,.5); stroke:#34d399; }
+      .decision { fill:rgba(120,53,15,.45); stroke:#fbbf24; stroke-width:1.8; }
+      .error { fill:rgba(136,19,55,.5); stroke:#fb7185; }
+      .store { fill:rgba(76,29,149,.5); stroke:#a78bfa; }
+      .neutral { fill:rgba(30,41,59,.7); stroke:#94a3b8; }
+      .highlight { fill:rgba(59,130,246,.42); stroke:#60a5fa; }
+      .panel { fill:rgba(15,23,42,.72); stroke:#334155; stroke-width:1.2; }
+      .lane { fill:none; stroke:#334155; stroke-width:1; stroke-dasharray:7 6; }
+      .edge { fill:none; stroke:#64748b; stroke-width:2; marker-end:url(#arrow); }
+      .edge-ok { fill:none; stroke:#34d399; stroke-width:2.2; marker-end:url(#arrow-ok); }
+      .edge-warn { fill:none; stroke:#fbbf24; stroke-width:2; marker-end:url(#arrow-warn); }
+      .edge-bad { fill:none; stroke:#fb7185; stroke-width:2; stroke-dasharray:7 5; marker-end:url(#arrow-bad); }
+      .loop { fill:none; stroke:#a78bfa; stroke-width:2; stroke-dasharray:7 5; marker-end:url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="2600" height="3500" fill="#0f172a"/>
+  <rect width="2600" height="3500" fill="url(#grid)"/>
+
+  <text x="56" y="54" class="title">Visoraft 真实全链路测试流程图</text>
+  <text x="56" y="82" class="subtitle">先确认测试方案，再执行真实数据测试 · 所有成功、失败、分叉与恢复路径均需留存证据</text>
+  <g transform="translate(1980,28)">
+    <rect width="564" height="58" rx="12" fill="#111c30" stroke="#334155"/>
+    <circle cx="28" cy="29" r="7" fill="#34d399"/><text x="45" y="34" class="note">成功主线</text>
+    <circle cx="160" cy="29" r="7" fill="#fbbf24"/><text x="177" y="34" class="note">选择/降级</text>
+    <circle cx="315" cy="29" r="7" fill="#fb7185"/><text x="332" y="34" class="note">失败/阻断</text>
+    <circle cx="456" cy="29" r="7" fill="#a78bfa"/><text x="473" y="34" class="note">恢复循环</text>
+  </g>
+
+  <!-- PHASE 1 BACKGROUND -->
+  <rect x="40" y="112" width="2520" height="1110" rx="20" class="panel"/>
+  <text x="68" y="150" class="phase-no">PHASE 01</text>
+  <text x="68" y="181" class="phase">真实来源、媒体与字幕处理</text>
+  <rect x="64" y="204" width="540" height="982" rx="14" class="lane"/>
+  <rect x="624" y="204" width="590" height="982" rx="14" class="lane"/>
+  <rect x="1234" y="204" width="650" height="982" rx="14" class="lane"/>
+  <rect x="1904" y="204" width="632" height="982" rx="14" class="lane"/>
+  <text x="84" y="232" class="phase-no">来源与鉴权</text>
+  <text x="644" y="232" class="phase-no">元数据与下载</text>
+  <text x="1254" y="232" class="phase-no">字幕与翻译</text>
+  <text x="1924" y="232" class="phase-no">转码与内容审核</text>
+
+  <!-- PHASE 1 EDGES -->
+  <path d="M334 316V356" class="edge"/>
+  <path d="M264 407H166V484" class="edge"/>
+  <path d="M404 407H500V484" class="edge"/>
+  <path d="M500 552V602" class="edge"/>
+  <path d="M500 670V722H334V764" class="edge"/>
+  <path d="M166 552V764H264" class="edge"/>
+  <path d="M404 809H660" class="edge-ok"/>
+  <path d="M334 854V927H150" class="edge-bad"/>
+  <path d="M150 995V1080H334V854" class="loop"/>
+  <path d="M790 854V906" class="edge-ok"/>
+  <path d="M860 950H1040V992" class="edge-bad"/>
+  <path d="M1040 1060V1125H790V994" class="loop"/>
+  <path d="M790 994V1076" class="edge-ok"/>
+  <path d="M920 1110H1268" class="edge-ok"/>
+  <path d="M1398 1110V1045" class="edge"/>
+  <path d="M1328 1001H1262V896" class="edge"/>
+  <path d="M1468 1001H1545V896" class="edge"/>
+  <path d="M1262 828V774" class="edge"/>
+  <path d="M1545 828V774" class="edge"/>
+  <path d="M1262 706V642" class="edge"/>
+  <path d="M1545 706V642" class="edge"/>
+  <path d="M1262 574V510" class="edge"/>
+  <path d="M1545 574V510" class="edge"/>
+  <path d="M1262 442V378H1404V338" class="edge"/>
+  <path d="M1545 442V378H1404V338" class="edge"/>
+  <path d="M1534 294H1980" class="edge-ok"/>
+  <path d="M2110 338V394" class="edge"/>
+  <path d="M2040 438H1942V510" class="edge"/>
+  <path d="M2180 438H2280V510" class="edge"/>
+  <path d="M1942 578V644H2110V690" class="edge"/>
+  <path d="M2280 578V644H2110V690" class="edge"/>
+  <path d="M2110 758V812" class="edge"/>
+  <path d="M2040 856H1942V928" class="edge-ok"/>
+  <path d="M2180 856H2290V928" class="edge-warn"/>
+  <path d="M2290 996V1052" class="edge-bad"/>
+  <path d="M1942 996V1098H2110" class="edge-ok"/>
+  <path d="M2290 1120H2190" class="edge-bad"/>
+
+  <!-- PHASE 1 NODES -->
+  <rect x="214" y="254" width="240" height="62" rx="31" class="box highlight"/>
+  <text x="334" y="280" class="label">开始真实任务</text><text x="334" y="301" class="sub">建立唯一验收批次号</text>
+  <g transform="translate(334,407)"><polygon points="0,-51 70,0 0,51 -70,0" class="decision"/><text y="-3" class="label">任务入口</text><text y="18" class="sub">手动 / 监控</text></g>
+  <text x="215" y="395" class="edge-label">手动 URL</text><text x="424" y="395" class="edge-label">YouTube 监控</text>
+  <rect x="76" y="484" width="180" height="68" rx="8" class="box process"/>
+  <text x="166" y="511" class="label">单条 URL</text><text x="166" y="532" class="sub">选择 Cookie / 策略</text>
+  <g transform="translate(500,518)"><polygon points="0,-47 64,0 0,47 -64,0" class="decision"/><text y="-3" class="label">监控类型</text><text y="18" class="sub">全站 / 频道</text></g>
+  <rect x="396" y="602" width="208" height="68" rx="8" class="box process"/>
+  <text x="500" y="629" class="label">检索或频道发现</text><text x="500" y="650" class="sub">过滤 · 去重 · 分类</text>
+  <g transform="translate(334,809)"><polygon points="0,-45 70,0 0,45 -70,0" class="decision"/><text y="-4" class="label">来源可访问？</text><text y="18" class="sub">Cookie 是否有效</text></g>
+  <rect x="62" y="927" width="176" height="68" rx="8" class="box error"/>
+  <text x="150" y="954" class="label">拉取失败</text><text x="150" y="975" class="sub">metadata_extraction_failed</text>
+  <rect x="62" y="1080" width="176" height="70" rx="8" class="box store"/>
+  <text x="150" y="1108" class="label">恢复选择</text><text x="150" y="1129" class="sub">同步 / 上传 / 换源后重试</text>
+  <rect x="660" y="776" width="260" height="78" rx="8" class="box service"/>
+  <text x="790" y="804" class="label">提取并持久化元数据</text><text x="790" y="826" class="sub">标题 · 简介 · 封面 · 时长</text>
+  <g transform="translate(790,950)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="5" class="label">元数据成功？</text></g>
+  <rect x="950" y="992" width="180" height="68" rx="8" class="box error"/>
+  <text x="1040" y="1019" class="label">失败分类</text><text x="1040" y="1040" class="sub">可重试 / 不可重试</text>
+  <rect x="660" y="1076" width="260" height="68" rx="8" class="box service"/>
+  <text x="790" y="1103" class="label">真实下载</text><text x="790" y="1124" class="sub">速度 · 总量 · ETA · 心跳</text>
+  <g transform="translate(1398,1001)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="5" class="label">字幕来源</text></g>
+  <rect x="1162" y="828" width="200" height="68" rx="8" class="box process"/><text x="1262" y="855" class="label">YouTube 字幕</text><text x="1262" y="876" class="sub">人工优先 / 自动优先</text>
+  <rect x="1445" y="828" width="200" height="68" rx="8" class="box process"/><text x="1545" y="855" class="label">ASR 识别</text><text x="1545" y="876" class="sub">分块 · VAD · 重试</text>
+  <rect x="1162" y="706" width="200" height="68" rx="8" class="box service"/><text x="1262" y="733" class="label">字幕后处理</text><text x="1262" y="754" class="sub">标点 · 合并 · 时轴</text>
+  <rect x="1445" y="706" width="200" height="68" rx="8" class="box service"/><text x="1545" y="733" class="label">ASR 失败分支</text><text x="1545" y="754" class="sub">重试 / 来源回退 / 失败</text>
+  <rect x="1162" y="574" width="200" height="68" rx="8" class="box service"/><text x="1262" y="601" class="label">智能分段</text><text x="1262" y="622" class="sub">失败则保留原分段</text>
+  <rect x="1445" y="574" width="200" height="68" rx="8" class="box service"/><text x="1545" y="601" class="label">字幕翻译</text><text x="1545" y="622" class="sub">批次重试 / 人工修订</text>
+  <rect x="1162" y="442" width="200" height="68" rx="8" class="box service"/><text x="1262" y="469" class="label">字幕质检</text><text x="1262" y="490" class="sub">分数 · 漏译 · 错译</text>
+  <rect x="1445" y="442" width="200" height="68" rx="8" class="box store"/><text x="1545" y="469" class="label">保存字幕资产</text><text x="1545" y="490" class="sub">原文 / 译文 VTT</text>
+  <rect x="1274" y="250" width="260" height="88" rx="8" class="box store"/><text x="1404" y="280" class="label">字幕结果就绪</text><text x="1404" y="302" class="sub">含 QC 分数与可编辑分段</text><text x="1404" y="322" class="tiny">关闭字幕时直接跳过本组</text>
+  <rect x="1980" y="250" width="260" height="88" rx="8" class="box process"/><text x="2110" y="280" class="label">FFmpeg 转码</text><text x="2110" y="302" class="sub">容器 · 编码器 · 字幕烧录</text><text x="2110" y="322" class="tiny">可配置关闭或 copy</text>
+  <g transform="translate(2110,438)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="-3" class="label">硬件可用？</text><text y="18" class="sub">NVIDIA / Intel / AMD</text></g>
+  <rect x="1842" y="510" width="200" height="68" rx="8" class="box service"/><text x="1942" y="537" class="label">硬件编码</text><text x="1942" y="558" class="sub">输出后 FFprobe 校验</text>
+  <rect x="2180" y="510" width="200" height="68" rx="8" class="box process"/><text x="2280" y="537" class="label">CPU 回退</text><text x="2280" y="558" class="sub">失败可调整预设重试</text>
+  <rect x="1980" y="690" width="260" height="68" rx="8" class="box store"/><text x="2110" y="717" class="label">成片资产可用</text><text x="2110" y="738" class="sub">媒体校验通过并持久化</text>
+  <g transform="translate(2110,856)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="-3" class="label">内容审核</text><text y="18" class="sub">是否启用</text></g>
+  <rect x="1842" y="928" width="200" height="68" rx="8" class="box service"/><text x="1942" y="955" class="label">跳过云审核</text><text x="1942" y="976" class="sub">进入业务审核</text>
+  <rect x="2190" y="928" width="200" height="68" rx="8" class="box process"/><text x="2290" y="955" class="label">阿里云审核</text><text x="2290" y="976" class="sub">文本 · 图片 · 视频</text>
+  <rect x="2190" y="1052" width="200" height="68" rx="8" class="box error"/><text x="2290" y="1079" class="label">审核结果分支</text><text x="2290" y="1100" class="sub">通过 / 转人工 / 阻断</text>
+  <rect x="1980" y="1098" width="210" height="68" rx="8" class="box highlight"/><text x="2085" y="1125" class="label">进入审核阶段</text><text x="2085" y="1146" class="sub">连接 PHASE 02</text>
+
+  <!-- PHASE 2 -->
+  <rect x="40" y="1252" width="2520" height="1010" rx="20" class="panel"/>
+  <text x="68" y="1290" class="phase-no">PHASE 02</text>
+  <text x="68" y="1321" class="phase">人工审核与自动审核完整分叉</text>
+  <rect x="64" y="1344" width="1120" height="878" rx="14" class="lane"/>
+  <rect x="1204" y="1344" width="1332" height="878" rx="14" class="lane"/>
+  <text x="84" y="1372" class="phase-no">人工审核路径</text>
+  <text x="1224" y="1372" class="phase-no">自动审核路径</text>
+
+  <!-- PHASE 2 EDGES -->
+  <path d="M1300 1436V1480" class="edge"/>
+  <path d="M1230 1524H780V1580" class="edge"/>
+  <path d="M1370 1524H1680V1580" class="edge"/>
+  <path d="M780 1648V1700" class="edge"/>
+  <path d="M710 1744H390V1800" class="edge-ok"/>
+  <path d="M780 1788V1840" class="edge-warn"/>
+  <path d="M850 1744H1060V1800" class="edge-bad"/>
+  <path d="M390 1868V2148H1290" class="edge-ok"/>
+  <path d="M780 1928V1980" class="edge"/>
+  <path d="M780 2048V2082H590V1840" class="loop"/>
+  <path d="M1060 1868V2170H850" class="edge-bad"/>
+  <path d="M1680 1648V1700" class="edge"/>
+  <path d="M1610 1744H1390V1800" class="edge-warn"/>
+  <path d="M1750 1744H1990V1800" class="edge"/>
+  <path d="M1990 1868V1920" class="edge"/>
+  <path d="M1920 1964H1660V2020" class="edge-ok"/>
+  <path d="M2060 1964H2260V2020" class="edge-bad"/>
+  <path d="M2260 2108V2200H1200V1614H910" class="loop"/>
+  <path d="M2330 2064V2160" class="edge-bad"/>
+  <path d="M1390 1868V1920H930V1800" class="loop"/>
+  <path d="M1660 2088V2148H1550" class="edge-ok"/>
+
+  <!-- PHASE 2 NODES -->
+  <rect x="1170" y="1388" width="260" height="48" rx="24" class="box highlight"/><text x="1300" y="1418" class="label">媒体处理完成</text>
+  <g transform="translate(1300,1524)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="5" class="label">审核模式？</text></g>
+  <text x="980" y="1512" class="edge-label">人工</text><text x="1512" y="1512" class="edge-label">自动</text>
+  <rect x="650" y="1580" width="260" height="68" rx="8" class="box process"/><text x="780" y="1607" class="label">人工审核工作台</text><text x="780" y="1628" class="sub">媒体 · 元数据 · 字幕可编辑</text>
+  <g transform="translate(780,1744)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="-3" class="label">人工决定</text><text y="18" class="sub">批准 / 退回 / 放弃</text></g>
+  <rect x="290" y="1800" width="200" height="68" rx="8" class="box service"/><text x="390" y="1827" class="label">批准</text><text x="390" y="1848" class="sub">ready_to_publish</text>
+  <rect x="680" y="1840" width="200" height="88" rx="8" class="box process"/><text x="780" y="1867" class="label">退回修改</text><text x="780" y="1888" class="sub">changes_requested</text><text x="780" y="1909" class="tiny">必须填写原因</text>
+  <rect x="960" y="1800" width="200" height="68" rx="8" class="box error"/><text x="1060" y="1827" class="label">放弃任务</text><text x="1060" y="1848" class="sub">可同时清理媒体</text>
+  <rect x="650" y="1980" width="260" height="68" rx="8" class="box store"/><text x="780" y="2007" class="label">修订并重新提交</text><text x="780" y="2028" class="sub">重新运行审核并保留版本</text>
+  <rect x="1550" y="1580" width="260" height="68" rx="8" class="box process"/><text x="1680" y="1607" class="label">自动规则计算</text><text x="1680" y="1628" class="sub">媒体 · 标题 · 时长 · 字幕 QC</text>
+  <g transform="translate(1680,1744)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="-3" class="label">云审核要求</text><text y="18" class="sub">强制人工？</text></g>
+  <rect x="1290" y="1800" width="200" height="68" rx="8" class="box process"/><text x="1390" y="1827" class="label">强制转人工</text><text x="1390" y="1848" class="sub">manual_required</text>
+  <g transform="translate(1990,1844)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="-3" class="label">全部规则</text><text y="18" class="sub">是否通过？</text></g>
+  <g transform="translate(1990,1964)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="-3" class="label">失败策略</text><text y="18" class="sub">两个选择</text></g>
+  <rect x="1560" y="2020" width="200" height="68" rx="8" class="box service"/><text x="1660" y="2047" class="label">全部通过</text><text x="1660" y="2068" class="sub">automatic_approve</text>
+  <rect x="2160" y="2020" width="200" height="88" rx="8" class="box process"/><text x="2260" y="2047" class="label">选择 1：转人工</text><text x="2260" y="2068" class="sub">进入人工审核队列</text><text x="2260" y="2089" class="tiny">可修订、批准或放弃</text>
+  <rect x="2160" y="2160" width="200" height="58" rx="8" class="box error"/><text x="2260" y="2184" class="label">选择 2：拒绝</text><text x="2260" y="2205" class="sub">failed · automatic_review_rejected</text>
+  <rect x="1290" y="2114" width="260" height="68" rx="8" class="box highlight"/><text x="1420" y="2141" class="label">进入待发布</text><text x="1420" y="2162" class="sub">连接 PHASE 03</text>
+  <rect x="650" y="2140" width="200" height="58" rx="8" class="box error"/><text x="750" y="2164" class="label">abandoned</text><text x="750" y="2185" class="sub">流程终止，记录原因</text>
+
+  <!-- PHASE 3 -->
+  <rect x="40" y="2292" width="2520" height="1132" rx="20" class="panel"/>
+  <text x="68" y="2330" class="phase-no">PHASE 03</text>
+  <text x="68" y="2361" class="phase">投稿、平台回执、对账与最终证据</text>
+  <rect x="64" y="2384" width="620" height="996" rx="14" class="lane"/>
+  <rect x="704" y="2384" width="760" height="996" rx="14" class="lane"/>
+  <rect x="1484" y="2384" width="1052" height="996" rx="14" class="lane"/>
+  <text x="84" y="2412" class="phase-no">策略与草稿</text>
+  <text x="724" y="2412" class="phase-no">平台投稿分叉</text>
+  <text x="1504" y="2412" class="phase-no">结果汇总与验收结论</text>
+
+  <!-- PHASE 3 EDGES -->
+  <path d="M374 2492V2540" class="edge"/>
+  <path d="M304 2584H160V2650" class="edge-warn"/>
+  <path d="M444 2584H580V2650" class="edge-ok"/>
+  <path d="M160 2718V2790H374" class="edge"/>
+  <path d="M580 2718V2790H374" class="edge"/>
+  <path d="M374 2858V2910" class="edge"/>
+  <path d="M444 2954H590V3020" class="edge-bad"/>
+  <path d="M590 3088V3148H374V2998" class="loop"/>
+  <path d="M374 2998V3180H760" class="edge-ok"/>
+  <path d="M890 3180V3030" class="edge"/>
+  <path d="M890 2962V2898" class="edge"/>
+  <path d="M820 2854H780V2760" class="edge"/>
+  <path d="M960 2854H1180V2760" class="edge"/>
+  <path d="M780 2692V2628" class="edge"/>
+  <path d="M1180 2692V2628" class="edge"/>
+  <path d="M780 2560V2504" class="edge-ok"/>
+  <path d="M1180 2560V2504" class="edge-ok"/>
+  <path d="M910 2468H1610V2520" class="edge-ok"/>
+  <path d="M1310 2468H1770V2520" class="edge-ok"/>
+  <path d="M1610 2588V2640" class="edge"/>
+  <path d="M1770 2588V2640" class="edge"/>
+  <path d="M1540 2684H1450V2760" class="edge-ok"/>
+  <path d="M1680 2684H1770V2760" class="edge-bad"/>
+  <path d="M1700 2804H1610V2870" class="edge-warn"/>
+  <path d="M1840 2804H1950V2870" class="edge-bad"/>
+  <path d="M1540 2914H1450V3000" class="edge-ok"/>
+  <path d="M1680 2914H1770V3000" class="loop"/>
+  <path d="M1450 2828V3130H2050" class="edge-ok"/>
+  <path d="M1770 3068V3130H2050" class="edge"/>
+  <path d="M1950 2938V3130H2050" class="edge-bad"/>
+  <path d="M2170 3164V3212" class="edge"/>
+  <path d="M2100 3256H1930V3320" class="edge-bad"/>
+  <path d="M2240 3256H2390V3320" class="edge-ok"/>
+
+  <!-- PHASE 3 NODES -->
+  <rect x="244" y="2440" width="260" height="52" rx="26" class="box highlight"/><text x="374" y="2473" class="label">ready_to_publish</text>
+  <g transform="translate(374,2584)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="-3" class="label">自动投稿？</text><text y="18" class="sub">任务 + 策略开关</text></g>
+  <rect x="60" y="2650" width="200" height="68" rx="8" class="box process"/><text x="160" y="2677" class="label">人工投稿队列</text><text x="160" y="2698" class="sub">运营打开并核对草稿</text>
+  <rect x="480" y="2650" width="200" height="68" rx="8" class="box service"/><text x="580" y="2677" class="label">自动准备草稿</text><text x="580" y="2698" class="sub">审核后自动入队</text>
+  <rect x="244" y="2790" width="260" height="68" rx="8" class="box store"/><text x="374" y="2817" class="label">生成平台草稿</text><text x="374" y="2838" class="sub">账号 · 分区 · 标题 · 标签</text>
+  <g transform="translate(374,2954)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="-3" class="label">存在阻塞？</text><text y="18" class="sub">账号 / 媒体 / 审核</text></g>
+  <rect x="490" y="3020" width="200" height="68" rx="8" class="box error"/><text x="590" y="3047" class="label">禁止入队</text><text x="590" y="3068" class="sub">修复配置后重新准备</text>
+  <rect x="244" y="3180" width="260" height="68" rx="8" class="box process"/><text x="374" y="3207" class="label">草稿字段校验</text><text x="374" y="3228" class="sub">标题≤80 · 标签1–10</text>
+  <rect x="760" y="3146" width="260" height="68" rx="8" class="box store"/><text x="890" y="3173" class="label">追加转载声明</text><text x="890" y="3194" class="sub">仅说明来源，不代表版权许可</text>
+  <rect x="760" y="2898" width="260" height="64" rx="8" class="box process"/><text x="890" y="2925" class="label">可靠发布队列</text><text x="890" y="2946" class="sub">幂等指纹 · 重试上限</text>
+  <g transform="translate(890,2854)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="5" class="label">目标平台</text></g>
+  <rect x="680" y="2692" width="200" height="68" rx="8" class="box process"/><text x="780" y="2719" class="label">AcFun 适配器</text><text x="780" y="2740" class="sub">真实 Cookie 账号</text>
+  <rect x="1080" y="2692" width="200" height="68" rx="8" class="box process"/><text x="1180" y="2719" class="label">Bilibili 适配器</text><text x="1180" y="2740" class="sub">真实 Cookie 账号</text>
+  <rect x="650" y="2560" width="260" height="68" rx="8" class="box service"/><text x="780" y="2587" class="label">AcFun 平台请求</text><text x="780" y="2608" class="sub">上传媒体并提交稿件</text>
+  <rect x="1050" y="2560" width="260" height="68" rx="8" class="box service"/><text x="1180" y="2587" class="label">Bilibili 平台请求</text><text x="1180" y="2608" class="sub">上传媒体并提交稿件</text>
+  <rect x="650" y="2436" width="260" height="68" rx="8" class="box error"/><text x="780" y="2463" class="label">fixture 边界</text><text x="780" y="2484" class="sub">真实来源禁止使用模拟账号</text>
+  <rect x="1050" y="2436" width="260" height="68" rx="8" class="box store"/><text x="1180" y="2463" class="label">真实回执要求</text><text x="1180" y="2484" class="sub">远端稿件号 + 可访问地址</text>
+  <rect x="1490" y="2520" width="240" height="68" rx="8" class="box service"/><text x="1610" y="2547" class="label">平台明确接收</text><text x="1610" y="2568" class="sub">保存远端 ID / URL</text>
+  <rect x="1650" y="2520" width="240" height="68" rx="8" class="box error"/><text x="1770" y="2547" class="label">平台返回失败</text><text x="1770" y="2568" class="sub">可重试 / 不可重试</text>
+  <g transform="translate(1610,2684)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="5" class="label">回执明确？</text></g>
+  <rect x="1350" y="2760" width="200" height="68" rx="8" class="box service"/><text x="1450" y="2787" class="label">投稿已提交</text><text x="1450" y="2808" class="sub">submitted / published</text>
+  <g transform="translate(1770,2804)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="-3" class="label">失败类型</text><text y="18" class="sub">超时 / 明确失败</text></g>
+  <g transform="translate(1610,2914)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="-3" class="label">对账结果</text><text y="18" class="sub">找到 / 未创建</text></g>
+  <rect x="1350" y="3000" width="200" height="68" rx="8" class="box service"/><text x="1450" y="3027" class="label">远端已找到</text><text x="1450" y="3048" class="sub">remote_published</text>
+  <rect x="1670" y="3000" width="200" height="68" rx="8" class="box process"/><text x="1770" y="3027" class="label">确认未创建</text><text x="1770" y="3048" class="sub">remote_not_created → 重试</text>
+  <rect x="1850" y="2870" width="200" height="68" rx="8" class="box error"/><text x="1950" y="2897" class="label">明确失败</text><text x="1950" y="2918" class="sub">编辑后重试或终止</text>
+  <rect x="2050" y="3130" width="240" height="68" rx="8" class="box store"/><text x="2170" y="3157" class="label">双平台结果汇总</text><text x="2170" y="3178" class="sub">成功 / 部分成功 / 失败</text>
+  <g transform="translate(2170,3256)"><polygon points="0,-44 70,0 0,44 -70,0" class="decision"/><text y="-3" class="label">远端可核验？</text><text y="18" class="sub">官网查到稿件</text></g>
+  <rect x="1810" y="3320" width="240" height="68" rx="8" class="box error"/><text x="1930" y="3347" class="label">验收失败</text><text x="1930" y="3368" class="sub">保持 in_progress，继续修复</text>
+  <rect x="2270" y="3320" width="240" height="68" rx="8" class="box highlight"/><text x="2390" y="3347" class="label">本批次通过</text><text x="2390" y="3368" class="sub">归档前端/API/DB/日志/平台证据</text>
+
+  <text x="64" y="3465" class="subtitle">验收门槛：每项功能必须同时具备可操作前端、持久化接口、真实服务、前后端联调、成功路径、失败路径与恢复路径；缺任一项则项目继续保持 in_progress。</text>
+</svg>

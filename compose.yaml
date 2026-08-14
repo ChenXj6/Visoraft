@@ -1,0 +1,298 @@
+name: visoraft
+
+x-go-service: &go-service
+  restart: unless-stopped
+  environment: &service-environment
+    VISORAFT_DATABASE_URL: postgres://visoraft:visoraft-local@postgres:5432/visoraft?sslmode=disable
+    VISORAFT_RABBITMQ_URL: amqp://visoraft:visoraft-local@rabbitmq:5672/
+    VISORAFT_EVENT_EXCHANGE: visoraft.events
+    VISORAFT_LOG_LEVEL: info
+    VISORAFT_COOKIE_ENCRYPTION_KEY: dmlzb3JhZnQtbG9jYWwtY29va2llLWtleS0wMDAwMDE=
+    VISORAFT_WORKER_TOKEN: visoraft-local-worker-token-2026
+    VISORAFT_S3_ENDPOINT: http://seaweedfs:8333
+    VISORAFT_S3_PUBLIC_ENDPOINT: ${VISORAFT_S3_PUBLIC_ENDPOINT:-}
+    VISORAFT_S3_ACCESS_KEY: visoraft-local
+    VISORAFT_S3_SECRET_KEY: visoraft-local-secret
+    VISORAFT_S3_REGION: us-east-1
+    VISORAFT_S3_BUCKET: visoraft-media
+  networks:
+    - backend
+
+x-media-service: &media-service
+  image: visoraft-media-worker:local
+  build:
+    context: workers/media
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  environment: &media-environment
+    VISORAFT_RABBITMQ_URL: amqp://visoraft:visoraft-local@rabbitmq:5672/
+    VISORAFT_EVENT_EXCHANGE: visoraft.events
+    VISORAFT_RABBITMQ_HEARTBEAT: "20"
+    VISORAFT_RABBITMQ_PUBLISHER_HEARTBEAT: "0"
+    VISORAFT_LOG_LEVEL: INFO
+    VISORAFT_S3_ENDPOINT: http://seaweedfs:8333
+    VISORAFT_S3_ACCESS_KEY: visoraft-local
+    VISORAFT_S3_SECRET_KEY: visoraft-local-secret
+    VISORAFT_S3_BUCKET: visoraft-media
+    VISORAFT_S3_REGION: us-east-1
+    VISORAFT_CONTROL_API_URL: http://control-api:8080
+    VISORAFT_WORKER_TOKEN: visoraft-local-worker-token-2026
+    VISORAFT_MAX_DOWNLOAD_BYTES: "2147483648"
+    VISORAFT_YTDLP_HTTP_CHUNK_SIZE_BYTES: "10485760"
+    VISORAFT_YTDLP_CONCURRENT_FRAGMENTS: "4"
+    VISORAFT_DOWNLOAD_STALL_TIMEOUT_SECONDS: "180"
+    VISORAFT_DOWNLOAD_TIMEOUT_SECONDS: "7200"
+    VISORAFT_TRUSTED_MEDIA_HOSTS: fixture-provider
+  depends_on:
+    rabbitmq:
+      condition: service_healthy
+    seaweedfs:
+      condition: service_healthy
+    control-api:
+      condition: service_healthy
+  networks:
+    - backend
+
+services:
+  fixture-provider:
+    build:
+      context: workers/fixture-provider
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=2).read()",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      - backend
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: visoraft
+      POSTGRES_USER: visoraft
+      POSTGRES_PASSWORD: visoraft-local
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U visoraft -d visoraft"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      - backend
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: visoraft
+      RABBITMQ_DEFAULT_PASS: visoraft-local
+      RABBITMQ_DEFAULT_VHOST: /
+    ports:
+      - "127.0.0.1:5673:5672"
+      - "127.0.0.1:15673:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    networks:
+      - backend
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.29
+    restart: unless-stopped
+    command: ["mini", "-dir=/data"]
+    environment:
+      AWS_ACCESS_KEY_ID: visoraft-local
+      AWS_SECRET_ACCESS_KEY: visoraft-local-secret
+      S3_BUCKET: visoraft-media
+    ports:
+      - "127.0.0.1:8333:8333"
+      - "127.0.0.1:9333:9333"
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9333/cluster/status"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    networks:
+      - backend
+
+  control-api:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: deploy/docker/go-service.Dockerfile
+      args:
+        SERVICE: control-api
+        VERSION: 0.1.0
+    environment:
+      <<: *service-environment
+      VISORAFT_HTTP_ADDR: :8080
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/health/ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  outbox-dispatcher:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: deploy/docker/go-service.Dockerfile
+      args:
+        SERVICE: outbox-dispatcher
+        VERSION: 0.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  workflow-consumer:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: deploy/docker/go-service.Dockerfile
+      args:
+        SERVICE: workflow-consumer
+        VERSION: 0.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  youtube-scheduler:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: deploy/docker/go-service.Dockerfile
+      args:
+        SERVICE: youtube-scheduler
+        VERSION: 0.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fixture-provider:
+        condition: service_healthy
+
+  publisher:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: deploy/docker/go-service.Dockerfile
+      args:
+        SERVICE: publisher
+        VERSION: 0.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+
+  moderation-worker:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: deploy/docker/go-service.Dockerfile
+      args:
+        SERVICE: moderation-worker
+        VERSION: 0.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+
+  metadata-worker:
+    <<: *media-service
+    environment:
+      <<: *media-environment
+      VISORAFT_MEDIA_QUEUE: visoraft.media.metadata.v1
+      VISORAFT_MEDIA_COMMANDS: metadata
+
+  media-worker:
+    <<: *media-service
+    deploy:
+      replicas: 2
+    environment:
+      <<: *media-environment
+      VISORAFT_MEDIA_QUEUE: visoraft.media.download.v1
+      VISORAFT_MEDIA_COMMANDS: download,assets_delete
+
+  subtitle-worker:
+    <<: *media-service
+    environment:
+      <<: *media-environment
+      VISORAFT_MEDIA_QUEUE: visoraft.subtitle.v1
+      VISORAFT_MEDIA_COMMANDS: subtitle
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      control-api:
+        condition: service_healthy
+      fixture-provider:
+        condition: service_healthy
+
+  transcode-worker:
+    <<: *media-service
+    environment:
+      <<: *media-environment
+      VISORAFT_MEDIA_QUEUE: visoraft.media.transcode.v1
+      VISORAFT_MEDIA_COMMANDS: transcode
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      control-api:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4173:8080"
+    depends_on:
+      control-api:
+        condition: service_healthy
+    networks:
+      - backend
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  seaweedfs-data:
+
+networks:
+  backend:
+    driver: bridge

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">Visoraft</title>
+  <desc id="desc">三条媒体处理轨道汇入向前的播放标记。</desc>
+  <rect width="96" height="96" rx="8" fill="#152126"/>
+  <path d="M14 24h18l18 18v8L29 30H14z" fill="#FBFCFC"/>
+  <path d="M14 45h39v7H14z" fill="#FBFCFC"/>
+  <path d="M14 66h15l21-20v9L32 72H14z" fill="#FBFCFC"/>
+  <path d="M50 24 82 48 50 72V58l14-10-14-10z" fill="#147B75"/>
+  <path d="M38 37h6v22h-6z" fill="#E44E35"/>
+</svg>
