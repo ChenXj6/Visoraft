@@ -1,22 +1,42 @@
 <p align="center">
-  <img src="assets/brand/visoraft-mark.svg" width="88" alt="Visoraft Logo">
+  <img src="assets/brand/visoraft-mark.svg" width="104" alt="Visoraft Logo">
 </p>
 
 <h1 align="center">Visoraft</h1>
 
-<p align="center">面向视频发现、媒体处理、字幕生产、内容复核与平台投稿的一体化本地操作台。</p>
+<p align="center"><strong>视频发现、媒体处理、字幕生产、内容复核与平台投稿的一体化本地操作台</strong></p>
+
+<p align="center">发现与监控 · 下载与媒体 · 字幕与审核 · 平台投稿</p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-v0.1.0-2563eb">
+  <img alt="Release" src="https://img.shields.io/badge/release-v0.1.1-1677ff">
   <img alt="React" src="https://img.shields.io/badge/React-19-087ea4">
   <img alt="Go" src="https://img.shields.io/badge/Go-control_plane-00add8">
   <img alt="Python" src="https://img.shields.io/badge/Python-media_workers-3776ab">
+  <img alt="Docker Compose" src="https://img.shields.io/badge/Docker-Compose-2496ed">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-16a34a">
 </p>
 
-> `v0.1.0` 是当前本地封版基线。项目已经具备可运行的本地服务与自动化测试，但真实平台投稿仍取决于有效账号、Cookie、平台规则及外部服务额度；请在自己的环境完成凭证验收后再用于正式业务。
+<p align="center">
+  <a href="#本地启动">本地启动</a> ·
+  <a href="#系统架构">系统架构</a> ·
+  <a href="#开发与验证">开发与验证</a> ·
+  <a href="docs/README.md">项目文档</a> ·
+  <a href="CHANGELOG.md">更新记录</a>
+</p>
 
-## 能做什么
+> [!IMPORTANT]
+> `v0.1.1` 是当前可运行的本地增量基线，并不代表全部生产能力已经验收完成。真实 AcFun 投稿、阿里云内容安全、生产级权限/安全与运维仍保持 `in_progress`，必须在有效凭证和目标环境中完成验收后才能用于正式业务。
+
+## v0.1.1 更新重点
+
+- 按新版交互原型统一核心页面、全局顶栏、按钮、状态与浅色/深色主题表现。
+- 增加按监控、剧集和独立任务分组的本地媒体库，支持自定义存储位置、文件缺失检测、删除与恢复。
+- 修复下载暂停、继续和断点恢复状态，完善任务勾选、审核页签、转载声明与投稿阻塞项交互。
+- 提供轻量 Docker 刷新入口，前后端改动无需重复重建完整媒体工具链。
+- 统一仓库品牌标识、版本信息和公开文档边界。
+
+## 核心能力
 
 - 通过单条视频 URL 创建媒体任务，持续展示任务步骤、速度、文件大小、预计剩余时间、失败原因与恢复操作。
 - 使用 YouTube 搜索、频道或剧集范围进行监控，将筛选结果直接加入统一任务队列，并按外部视频 ID 去重。
@@ -26,6 +46,26 @@
 - 管理 Bilibili、AcFun 投稿账号与 Cookie，审核通过后进入投稿工作台，并保存发布结果及失败恢复记录。
 - 提供 CookieCloud/Netscape Cookie、全局模型与字幕专用覆盖、ASR、提示词、转码、监控和投稿策略配置。
 - 提供资源文件中心、浅色/深色主题、桌面与窄屏布局及全站可读性检查。
+- 将任务产物同步到用户可见的本地媒体库；监控任务按节目、分部和集数整理，独立任务单独归档，并可检测手动删除后恢复。
+
+## 任务流程
+
+```mermaid
+flowchart LR
+    DISCOVER["发现 / 手动建单"] --> META["获取媒体信息"]
+    META --> DOWNLOAD["下载媒体"]
+    DOWNLOAD --> PROCESS["媒体与字幕处理"]
+    PROCESS --> REVIEW{"审核策略"}
+    REVIEW -->|人工审核| MANUAL["人工复核"]
+    REVIEW -->|自动通过| READY["等待投稿"]
+    REVIEW -->|规则失败转人工| MANUAL
+    REVIEW -->|规则失败拒绝| REJECTED["已拒绝"]
+    MANUAL -->|通过| READY
+    MANUAL -->|退回| PROCESS
+    READY --> PUBLISH["平台投稿"]
+    PUBLISH -->|失败| RECOVER["重试 / 恢复"]
+    RECOVER --> PUBLISH
+```
 
 ## 系统架构
 
@@ -81,6 +121,14 @@ Copy-Item .env.example .env
 .\scripts\local.ps1 up
 ```
 
+Docker Desktop 中的“启动”只会启动上一次构建的容器，不会读取后来修改的源码。更新代码或切换版本后，请双击项目根目录的 `刷新本地Docker版本.cmd`，或执行：
+
+```powershell
+.\scripts\local.ps1 refresh
+```
+
+该操作只重建管理页面和控制接口，并强制创建对应容器，完成后还会校验当前文件库接口，避免旧镜像被误认为启动成功。需要更新全部后台和媒体服务时，执行 `.\scripts\local.ps1 refresh-all`；该操作会使用 Docker 缓存，不会每次重新编译 FFmpeg。之后没有代码变更时，可以继续直接使用 Docker Desktop 启停项目。
+
 启动成功后可访问：
 
 | 服务 | 地址 |
@@ -97,6 +145,14 @@ Copy-Item .env.example .env
 .\scripts\local.ps1 logs
 .\scripts\local.ps1 down
 ```
+
+本地媒体库默认位于项目的 `storage/library`。也可以先在“设置 → 本地媒体库”填写新的绝对路径，再执行：
+
+```powershell
+.\scripts\local.ps1 storage
+```
+
+也可直接指定路径：`.\scripts\local.ps1 storage -Path 'D:\媒体库'`。路径切换不会删除旧目录；新位置应用后，系统按需重新同步文件。
 
 `reset -Force` 会删除本地数据库、队列和对象存储卷，只应在确认不再需要本地任务与媒体后使用。
 
@@ -157,11 +213,13 @@ compose.yaml              本地完整服务编排
 
 ## 当前验证边界
 
-| 范围 | `v0.1.0` 状态 |
+| 范围 | `v0.1.1` 状态 |
 | --- | --- |
 | 本地容器、任务状态机、下载、媒体与字幕链路 | 已纳入本地与自动化验证 |
 | 人工/自动审核及失败恢复 | 已纳入持久化链路验证 |
 | YouTube 监控与建单 | 已纳入真实 Data API 和本地流程验证 |
+| 核心页面、固定顶栏、浅色/深色主题 | 已完成核心 9 页面自动化布局检查；全部路由、弹窗与边界状态逐像素验收仍在继续 |
+| 本地媒体库、监控分组、文件删除与恢复 | 页面与接口已联调；真实磁盘破坏性场景仍需按目标目录策略复验 |
 | Bilibili 投稿 | 需要使用者以当前有效账号再次完成真实平台验收 |
 | AcFun 投稿 | 适配入口已保留，真实平台闭环待有效账号验收 |
 | 生产部署、高可用与安全基线 | 不属于本地封版完成声明，需按实际环境另行验收 |

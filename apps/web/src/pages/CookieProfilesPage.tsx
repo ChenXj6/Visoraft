@@ -5,6 +5,7 @@ import {
   ConfirmDialog,
   EmptyState,
   LoadingBlock,
+  ModalDialog,
   PageHeader,
   QueryError
 } from "../components";
@@ -13,6 +14,7 @@ import { Icon } from "../icons";
 import { ExternalGuideLink, HelpLink, TransientNotice } from "../product-ui";
 
 type CloudFields = keyof CreateCookieCloudInput;
+type ProfileFilter = "all" | "ready" | "attention";
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof ApiError ? error.message : fallback;
@@ -41,6 +43,8 @@ export default function CookieProfilesPage() {
   });
   const [cloudErrors, setCloudErrors] = useState<Partial<Record<CloudFields, string>>>({});
   const [cloudError, setCloudError] = useState("");
+  const [cloudOpen, setCloudOpen] = useState(false);
+  const [profileFilter, setProfileFilter] = useState<ProfileFilter>("all");
   const [deleteTarget, setDeleteTarget] = useState<CookieProfile>();
   const [profileNotice, setProfileNotice] = useState("");
 
@@ -76,6 +80,7 @@ export default function CookieProfilesPage() {
       setCloudValues({ name: "", server_url: "", uuid: "", password: "" });
       setCloudErrors({});
       setCloudError("");
+      setCloudOpen(false);
       setProfileNotice(
         profile.has_usable_cookies
           ? `“${profile.name}”同步完成，可供任务使用。`
@@ -106,6 +111,24 @@ export default function CookieProfilesPage() {
     }
   });
 
+  const syncAll = useMutation({
+    mutationFn: async () => {
+      const cloudProfiles = profiles.data?.items.filter((profile) => profile.kind === "cookiecloud") ?? [];
+      for (const profile of cloudProfiles) {
+        await api.syncCookieProfile(profile.id);
+      }
+      return cloudProfiles.length;
+    },
+    onSuccess: async (count) => {
+      setProfileNotice(count > 0 ? `已重新校验 ${count} 个自动同步配置。` : "Cookie 状态已刷新。");
+      await refreshProfiles();
+    },
+    onError: (error) => {
+      setProfileNotice(errorMessage(error, "部分 Cookie 配置校验失败"));
+      void refreshProfiles();
+    }
+  });
+
   const remove = useMutation({
     mutationFn: api.deleteCookieProfile,
     onSuccess: async () => {
@@ -123,6 +146,20 @@ export default function CookieProfilesPage() {
     () => profiles.data?.items.filter((profile) => profile.has_usable_cookies).length ?? 0,
     [profiles.data]
   );
+  const attentionCount = useMemo(
+    () => profiles.data?.items.filter((profile) => !profile.has_usable_cookies || profile.status === "error").length ?? 0,
+    [profiles.data]
+  );
+  const attentionProfiles = useMemo(
+    () => profiles.data?.items.filter((profile) => !profile.has_usable_cookies || profile.status === "error") ?? [],
+    [profiles.data]
+  );
+  const filteredProfiles = useMemo(() => {
+    const items = profiles.data?.items ?? [];
+    if (profileFilter === "ready") return items.filter((profile) => profile.has_usable_cookies && profile.status !== "error");
+    if (profileFilter === "attention") return items.filter((profile) => !profile.has_usable_cookies || profile.status === "error");
+    return items;
+  }, [profileFilter, profiles.data]);
 
   const submitUpload = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -153,187 +190,66 @@ export default function CookieProfilesPage() {
 
   return (
     <>
-      <PageHeader
-        title="登录凭据工作台"
-        description="上传浏览器导出的 cookies.txt，或连接自己的 CookieCloud。任务需要登录时会安全读取对应配置。"
-        actions={
-          <div className="cookie-count-block" aria-label={`${readyCount} 个可用 Cookie 配置`}>
-            <strong>{readyCount}</strong>
-            <span>可用</span>
-          </div>
-        }
-      />
+      <PageHeader title="Cookie 管理" actions={<>
+        <button className="button button-secondary button-small" type="button" disabled={syncAll.isPending || profiles.isPending} onClick={() => syncAll.mutate()}>{syncAll.isPending ? "正在校验…" : "全部重新校验"}</button>
+        <button className="button button-primary button-small" type="button" onClick={() => fileInput.current?.click()}>导入 Cookie</button>
+      </>} />
 
-      <div className="cookie-security-note" role="note">
-        <span className="security-note-mark" aria-hidden="true">
-          <Icon name="shield" />
-        </span>
-        <div>
-          <strong>Cookie 按敏感凭据处理</strong>
-          <p>
-            登录信息会加密保存；CookieCloud 密码只用于本机完成同步。
-            同步成功代表配置可读取，但网站登录状态仍可能过期，请留意校验结果。
-          </p>
-        </div>
-      </div>
-
-      <div className="cookie-input-grid">
-        <form className="work-panel cookie-input-panel" onSubmit={submitUpload}>
-          <header className="section-heading">
-            <span className="sequence-mark"><Icon name="shield" /></span>
-            <div>
-              <p className="eyebrow">本地导入</p>
-              <h2>上传 cookies.txt</h2>
-              <p>适合从浏览器导出的 Netscape 格式文件，最大 5 MiB。</p>
-            </div>
+      <div className="prototype-cookie-layout">
+        <section className="work-panel prototype-cookie-add">
+          <header className="prototype-cookie-panel-head">
+            <h2>添加 Cookie</h2>
+            <span>二选一即可</span>
           </header>
-
-          <label className="field">
-            <span>配置名称</span>
-            <input
-              value={uploadName}
-              onChange={(event) => setUploadName(event.target.value)}
-              placeholder="例如：YouTube 主账号"
-              maxLength={80}
-              autoComplete="off"
-            />
-            <small className="field-help">留空时使用文件名。</small>
-          </label>
-
-          <label className="file-drop">
-            <input
-              ref={fileInput}
-              type="file"
-              accept=".txt,text/plain"
-              onChange={(event) => {
-                setUploadFile(event.target.files?.[0]);
-                setUploadError("");
-              }}
-            />
-            <span className="file-drop-code" aria-hidden="true">
-              TXT
-            </span>
-            <span>
-              <strong>{uploadFile?.name ?? "选择 cookies.txt"}</strong>
+          <form className="prototype-cookie-upload" onSubmit={submitUpload}>
+            <label className="prototype-cookie-drop">
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".txt,text/plain"
+                onChange={(event) => {
+                  const next = event.target.files?.[0];
+                  setUploadFile(next);
+                  if (next && !uploadName) setUploadName(next.name.replace(/\.txt$/i, ""));
+                  setUploadError("");
+                }}
+              />
+              <span className="prototype-cookie-drop-icon" aria-hidden="true"><Icon name="file" /></span>
+              <strong>{uploadFile?.name ?? "上传 cookies.txt"}</strong>
               <small>
                 {uploadFile
-                  ? `${(uploadFile.size / 1024).toFixed(1)} KiB`
-                  : "点击选择浏览器导出的 Netscape 文件"}
+                  ? `${(uploadFile.size / 1024).toFixed(1)} KiB · 点击可重新选择`
+                  : "从浏览器导出 Netscape 格式文件，拖拽到此处或点击选择"}
               </small>
-            </span>
-          </label>
+              <span className="button button-secondary button-small">{uploadFile ? "重新选择" : "选择文件"}</span>
+            </label>
+            {uploadError ? <p className="form-alert" role="alert">{uploadError}</p> : null}
+            {uploadFile ? (
+              <button className="button button-primary button-small" type="submit" disabled={upload.isPending}>
+                {upload.isPending ? "正在校验…" : "上传并保存"}
+              </button>
+            ) : null}
+          </form>
+          <div className="prototype-cookie-or"><span>或</span></div>
+          <div className="prototype-cookie-cloud-card">
+            <span className="prototype-cookie-cloud-icon" aria-hidden="true"><Icon name="cookie" /></span>
+            <strong>连接 CookieCloud</strong>
+            <small>填入服务器地址与密钥，自动同步并保持更新</small>
+            <button className="button button-primary button-small" type="button" onClick={() => setCloudOpen(true)}>
+              去连接
+            </button>
+          </div>
+        </section>
 
-          {uploadError && (
-            <p className="form-alert" role="alert">
-              {uploadError}
-            </p>
-          )}
-          <button
-            className="button button-primary button-block"
-            type="submit"
-            disabled={upload.isPending}
-          >
-            {upload.isPending ? "正在校验并加密…" : "上传并保存"}
-          </button>
-        </form>
-
-        <form className="work-panel cookie-input-panel" onSubmit={submitCloud} noValidate>
-          <header className="section-heading">
-            <span className="sequence-mark"><Icon name="cookie" /></span>
-            <div>
-              <p className="eyebrow">自动同步</p>
-              <div className="section-heading-tools">
-                <h2>连接 CookieCloud</h2>
-                <HelpLink label="安装与配置" title="如何配置 CookieCloud">
-                  <ol>
-                    <li>部署或准备一个自己的 CookieCloud 服务地址。</li>
-                    <li>在浏览器安装 CookieCloud 扩展，填写同一服务地址、用户标识和端到端密码。</li>
-                    <li>先在浏览器扩展中同步，再把同一组信息填入本页并保存。</li>
-                    <li>同步成功后，可在新建任务时选择这条登录配置。</li>
-                  </ol>
-                  <div className="guide-links">
-                    <ExternalGuideLink href="https://github.com/easychen/CookieCloud">
-                      CookieCloud 项目与部署说明
-                    </ExternalGuideLink>
-                    <ExternalGuideLink href="https://chromewebstore.google.com/detail/cookiecloud/ffjiejobkoibkjlhjnlgmcnnigeelbdl?hl=en">
-                      Chrome 浏览器扩展
-                    </ExternalGuideLink>
-                  </div>
-                </HelpLink>
-              </div>
-              <p>填写你自己的 CookieCloud 地址；保存时立即执行一次同步。</p>
+        <section className="work-panel prototype-cookie-vault">
+          <header className="prototype-cookie-panel-head">
+            <h2>已导入 <small>{profiles.data?.items.length ?? 0}</small></h2>
+            <div className="prototype-cookie-filters" role="group" aria-label="Cookie 状态筛选">
+              <button type="button" className={profileFilter === "all" ? "active" : ""} onClick={() => setProfileFilter("all")}>全部 {profiles.data?.items.length ?? 0}</button>
+              <button type="button" className={profileFilter === "ready" ? "active" : ""} onClick={() => setProfileFilter("ready")}>有效 {readyCount}</button>
+              <button type="button" className={profileFilter === "attention" ? "active" : ""} onClick={() => setProfileFilter("attention")}>需要更新 {attentionCount}</button>
             </div>
           </header>
-
-          <div className="field-pair">
-            <label className="field">
-              <span>配置名称</span>
-              <input
-                value={cloudValues.name}
-                onChange={(event) => updateCloud("name", event.target.value)}
-                placeholder="例如：CookieCloud / YouTube"
-                maxLength={80}
-                aria-invalid={Boolean(cloudErrors.name)}
-              />
-              {cloudErrors.name && <small className="field-error">{cloudErrors.name}</small>}
-            </label>
-            <label className="field">
-              <span>服务地址</span>
-              <input
-                type="url"
-                value={cloudValues.server_url}
-                onChange={(event) => updateCloud("server_url", event.target.value)}
-                placeholder="https://cookie.example.com"
-                autoComplete="url"
-                aria-invalid={Boolean(cloudErrors.server_url)}
-              />
-              {cloudErrors.server_url && (
-                <small className="field-error">{cloudErrors.server_url}</small>
-              )}
-            </label>
-          </div>
-
-          <div className="field-pair">
-            <label className="field">
-              <span>UUID</span>
-              <input
-                value={cloudValues.uuid}
-                onChange={(event) => updateCloud("uuid", event.target.value)}
-                autoComplete="off"
-                spellCheck={false}
-                aria-invalid={Boolean(cloudErrors.uuid)}
-              />
-              {cloudErrors.uuid && <small className="field-error">{cloudErrors.uuid}</small>}
-            </label>
-            <label className="field">
-              <span>端到端加密密码</span>
-              <input
-                type="password"
-                value={cloudValues.password}
-                onChange={(event) => updateCloud("password", event.target.value)}
-                autoComplete="new-password"
-                aria-invalid={Boolean(cloudErrors.password)}
-              />
-              {cloudErrors.password && (
-                <small className="field-error">{cloudErrors.password}</small>
-              )}
-            </label>
-          </div>
-
-          {cloudError && (
-            <p className="form-alert" role="alert">
-              {cloudError}
-            </p>
-          )}
-          <button
-            className="button button-primary button-block"
-            type="submit"
-            disabled={createCloud.isPending}
-          >
-            {createCloud.isPending ? "正在连接并解密…" : "保存并同步"}
-          </button>
-        </form>
-      </div>
 
       {profileNotice && (
         <TransientNotice
@@ -343,23 +259,6 @@ export default function CookieProfilesPage() {
           {profileNotice}
         </TransientNotice>
       )}
-
-      <section className="work-panel cookie-vault">
-        <header className="work-panel-head">
-          <div>
-            <p className="eyebrow">已保存配置</p>
-            <h2>Cookie 配置</h2>
-          </div>
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="刷新 Cookie 配置"
-            onClick={() => void profiles.refetch()}
-          >
-            <Icon name="refresh" />
-          </button>
-        </header>
-
         {profiles.isPending ? (
           <LoadingBlock label="正在读取 Cookie 配置" />
         ) : profiles.isError ? (
@@ -368,14 +267,14 @@ export default function CookieProfilesPage() {
             message={profiles.error.message}
             retry={() => void profiles.refetch()}
           />
-        ) : profiles.data.items.length === 0 ? (
+        ) : filteredProfiles.length === 0 ? (
           <EmptyState
-            title="还没有 Cookie 配置"
-            description="上传 cookies.txt 或连接 CookieCloud 后，需要登录的网站任务就能选择对应配置。"
+            title={profiles.data.items.length === 0 ? "还没有 Cookie 配置" : "这个筛选下没有配置"}
+            description={profiles.data.items.length === 0 ? "上传 cookies.txt 或连接 CookieCloud 后即可在任务中使用。" : "切换状态筛选查看其他配置。"}
           />
         ) : (
           <div className="cookie-profile-list">
-            {profiles.data.items.map((profile) => (
+            {filteredProfiles.map((profile) => (
               <article className="cookie-profile-row" key={profile.id}>
                 <div
                   className="profile-type"
@@ -390,8 +289,8 @@ export default function CookieProfilesPage() {
                   </div>
                   <p>
                     {profile.kind === "cookiecloud"
-                      ? profile.server_url
-                      : profile.source_filename || "上传文件"}
+                      ? `CookieCloud 自动同步 · ${profile.cookie_count} 条 · ${profile.domain_count} 个域名 · ${formatDateTime(profile.last_synced_at)}`
+                      : `${profile.source_filename || "cookies.txt"} · ${profile.cookie_count} 条 · ${profile.domain_count} 个域名 · ${formatDateTime(profile.last_synced_at)}`}
                   </p>
                   {profile.last_error && (
                     <p className="profile-error" role="alert">
@@ -417,7 +316,7 @@ export default function CookieProfilesPage() {
                   {profile.kind === "cookiecloud" && (
                     <button
                       type="button"
-                      className="button button-secondary"
+                      className="button button-secondary button-small"
                       disabled={sync.isPending}
                       onClick={() => sync.mutate(profile.id)}
                     >
@@ -437,12 +336,83 @@ export default function CookieProfilesPage() {
           </div>
         )}
       </section>
+      </div>
+
+      {attentionProfiles.length > 0 ? (
+        <div className="warn-banner prototype-cookie-warning" role="status">
+          <Icon name="shield" />
+          <div>
+            <strong>{attentionProfiles[0]?.name ?? "Cookie 配置"} 需要更新</strong>
+            <span>该登录配置当前不可用，重新导入或同步后，关联任务可继续处理。</span>
+          </div>
+        </div>
+      ) : null}
+
+      <ModalDialog
+        open={cloudOpen}
+        title="连接 CookieCloud"
+        description="填入服务器地址与加密密钥"
+        icon="cookie"
+        tone="success"
+        closeDisabled={createCloud.isPending}
+        onClose={() => {
+          if (!createCloud.isPending) {
+            setCloudOpen(false);
+            setCloudError("");
+          }
+        }}
+        footer={
+          <>
+            <button className="button button-secondary button-small" type="button" disabled={createCloud.isPending} onClick={() => setCloudOpen(false)}>取消</button>
+            <button className="button button-primary button-small" type="submit" form="cookiecloud-connect-form" disabled={createCloud.isPending}>
+              {createCloud.isPending ? "正在连接…" : "连接"}
+            </button>
+          </>
+        }
+      >
+        <form id="cookiecloud-connect-form" className="prototype-cookiecloud-form" onSubmit={submitCloud} noValidate>
+          <label className="field">
+            <span>配置名称</span>
+            <input value={cloudValues.name} onChange={(event) => updateCloud("name", event.target.value)} placeholder="例如：Bilibili 主号" maxLength={80} aria-invalid={Boolean(cloudErrors.name)} />
+            {cloudErrors.name ? <small className="field-error">{cloudErrors.name}</small> : null}
+          </label>
+          <label className="field">
+            <span>服务器地址</span>
+            <input type="url" value={cloudValues.server_url} onChange={(event) => updateCloud("server_url", event.target.value)} placeholder="https://cookiecloud.example.com" autoComplete="url" aria-invalid={Boolean(cloudErrors.server_url)} />
+            <small className="field-help">支持自建服务，建议使用 HTTPS。</small>
+            {cloudErrors.server_url ? <small className="field-error">{cloudErrors.server_url}</small> : null}
+          </label>
+          <label className="field">
+            <span>用户标识（UUID）</span>
+            <input value={cloudValues.uuid} onChange={(event) => updateCloud("uuid", event.target.value)} autoComplete="off" spellCheck={false} aria-invalid={Boolean(cloudErrors.uuid)} />
+            {cloudErrors.uuid ? <small className="field-error">{cloudErrors.uuid}</small> : null}
+          </label>
+          <label className="field">
+            <span>加密密码</span>
+            <input type="password" value={cloudValues.password} onChange={(event) => updateCloud("password", event.target.value)} autoComplete="new-password" aria-invalid={Boolean(cloudErrors.password)} />
+            <small className="field-help">仅在本机加密保存。</small>
+            {cloudErrors.password ? <small className="field-error">{cloudErrors.password}</small> : null}
+          </label>
+          {cloudError ? <p className="form-alert" role="alert">{cloudError}</p> : null}
+          <HelpLink label="查看安装与配置流程" title="如何配置 CookieCloud">
+            <ol>
+              <li>部署或准备自己的 CookieCloud 服务。</li>
+              <li>在浏览器扩展中填写相同的服务地址、用户标识和加密密码。</li>
+              <li>先从扩展同步，再在此连接。</li>
+            </ol>
+            <div className="guide-links">
+              <ExternalGuideLink href="https://github.com/easychen/CookieCloud">项目与部署说明</ExternalGuideLink>
+              <ExternalGuideLink href="https://chromewebstore.google.com/detail/cookiecloud/ffjiejobkoibkjlhjnlgmcnnigeelbdl?hl=en">Chrome 浏览器扩展</ExternalGuideLink>
+            </div>
+          </HelpLink>
+        </form>
+      </ModalDialog>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title={`删除“${deleteTarget?.name ?? "Cookie 配置"}”？`}
-        description="密文 Cookie 和 CookieCloud 凭据会从数据库删除。已关联任务不会删除，但下次重试前需要改选其他配置。"
-        confirmLabel="确认删除"
+        title="确认删除 Cookie？"
+        description="删除后关联任务需重新选择登录配置"
+        confirmLabel="删除"
         destructive
         busy={remove.isPending}
         onConfirm={() => {
@@ -451,7 +421,17 @@ export default function CookieProfilesPage() {
         onClose={() => {
           if (!remove.isPending) setDeleteTarget(undefined);
         }}
-      />
+      >
+        {deleteTarget ? (
+          <div className="cookie-delete-summary">
+            <strong>{deleteTarget.name}</strong>
+            <span>
+              {deleteTarget.kind === "cookiecloud" ? "CookieCloud 自动同步" : "本地 Cookie 文件"}
+              {` · ${deleteTarget.cookie_count} 条 Cookie · 上次校验 ${formatDateTime(deleteTarget.last_synced_at)}`}
+            </span>
+          </div>
+        ) : null}
+      </ConfirmDialog>
     </>
   );
 }

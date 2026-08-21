@@ -1,10 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
   <title id="title">Visoraft</title>
-  <desc id="desc">三条媒体处理轨道汇入向前的播放标记。</desc>
-  <rect width="96" height="96" rx="8" fill="#152126"/>
-  <path d="M14 24h18l18 18v8L29 30H14z" fill="#FBFCFC"/>
-  <path d="M14 45h39v7H14z" fill="#FBFCFC"/>
-  <path d="M14 66h15l21-20v9L32 72H14z" fill="#FBFCFC"/>
-  <path d="M50 24 82 48 50 72V58l14-10-14-10z" fill="#147B75"/>
-  <path d="M38 37h6v22h-6z" fill="#E44E35"/>
+  <desc id="desc">媒体核心沿轻量轨道持续流转。</desc>
+  <rect x="18" y="18" width="60" height="60" rx="18" fill="#2866E8"/>
+  <circle cx="48" cy="48" r="11" fill="#FFFFFF"/>
+  <ellipse cx="48" cy="48" rx="39" ry="17" fill="none" stroke="#9BB9FA" stroke-width="5" transform="rotate(-24 48 48)"/>
+  <circle cx="79" cy="32" r="7" fill="#FF6B57" stroke="#FFFFFF" stroke-width="4"/>
+  <circle cx="20" cy="65" r="5" fill="#39B89A" stroke="#FFFFFF" stroke-width="3"/>
 </svg>

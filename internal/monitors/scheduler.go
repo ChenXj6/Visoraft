@@ -242,6 +242,15 @@ func (s *Scheduler) processCandidate(
 		RepostStatementVersion: run.Monitor.TaskTemplate.RepostStatementVersion,
 		PostingStrategyID:      run.Monitor.TaskTemplate.PostingStrategyID,
 		AutoPublish:            run.Monitor.TaskTemplate.AutoPublish,
+		Origin: &tasks.TaskOrigin{
+			Kind:            "monitor",
+			MonitorID:       run.Monitor.ID,
+			MonitorName:     run.Monitor.Name,
+			SeriesTitle:     run.Monitor.SeriesTitle,
+			SeriesScopeKey:  candidate.SeriesScopeKey,
+			SeriesScopeName: candidate.SeriesScopeName,
+			EpisodeNumber:   candidate.EpisodeNumber,
+		},
 	})
 	if err != nil {
 		_ = s.store.ReleaseIngestion(ctx, candidate.ExternalVideoID)

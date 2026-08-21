@@ -145,10 +145,14 @@ services:
       dockerfile: deploy/docker/go-service.Dockerfile
       args:
         SERVICE: control-api
-        VERSION: 0.1.0
+        VERSION: 0.1.1
     environment:
       <<: *service-environment
       VISORAFT_HTTP_ADDR: :8080
+      VISORAFT_LIBRARY_ROOT: /var/lib/visoraft-library
+      VISORAFT_LIBRARY_HOST_PATH: ${VISORAFT_LIBRARY_HOST_PATH:-./storage/library}
+    volumes:
+      - "${VISORAFT_LIBRARY_HOST_PATH:-./storage/library}:/var/lib/visoraft-library"
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
@@ -167,7 +171,7 @@ services:
       dockerfile: deploy/docker/go-service.Dockerfile
       args:
         SERVICE: outbox-dispatcher
-        VERSION: 0.1.0
+        VERSION: 0.1.1
     depends_on:
       postgres:
         condition: service_healthy
@@ -181,7 +185,7 @@ services:
       dockerfile: deploy/docker/go-service.Dockerfile
       args:
         SERVICE: workflow-consumer
-        VERSION: 0.1.0
+        VERSION: 0.1.1
     depends_on:
       postgres:
         condition: service_healthy
@@ -195,7 +199,7 @@ services:
       dockerfile: deploy/docker/go-service.Dockerfile
       args:
         SERVICE: youtube-scheduler
-        VERSION: 0.1.0
+        VERSION: 0.1.1
     depends_on:
       postgres:
         condition: service_healthy
@@ -209,7 +213,7 @@ services:
       dockerfile: deploy/docker/go-service.Dockerfile
       args:
         SERVICE: publisher
-        VERSION: 0.1.0
+        VERSION: 0.1.1
     depends_on:
       postgres:
         condition: service_healthy
@@ -223,7 +227,7 @@ services:
       dockerfile: deploy/docker/go-service.Dockerfile
       args:
         SERVICE: moderation-worker
-        VERSION: 0.1.0
+        VERSION: 0.1.1
     depends_on:
       postgres:
         condition: service_healthy

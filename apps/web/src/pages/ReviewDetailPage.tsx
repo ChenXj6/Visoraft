@@ -128,7 +128,9 @@ export default function ReviewDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["reviews"] }),
       queryClient.invalidateQueries({ queryKey: ["tasks"] }),
       queryClient.invalidateQueries({ queryKey: ["task", taskId] }),
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["publishing-queue"] }),
+      queryClient.invalidateQueries({ queryKey: ["publishing", taskId] })
     ]);
   };
 

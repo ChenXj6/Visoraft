@@ -10,10 +10,25 @@ import {
 import {
   EmptyState,
   LoadingBlock,
+  ModalDialog,
   PageHeader,
+  PlatformChips,
+  ProgressBar,
   QueryError,
-  TaskTrack
+  StatusBadge,
+  TaskTitle,
+  currentStep
 } from "../components";
+import {
+  formatRelativeTime,
+  formatDateTime,
+  orderedTaskSteps,
+  shortID,
+  stepLabel,
+  taskStatusForDisplay,
+  taskStepProgress
+} from "../format";
+import { Icon } from "../icons";
 import {
   TaskLifecycleDialog,
   type TaskLifecycleMode
@@ -89,7 +104,9 @@ export default function TasksPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
   const [actionError, setActionError] = useState("");
+  const [search, setSearch] = useState("");
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [previewTask, setPreviewTask] = useState<Task>();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -243,11 +260,19 @@ export default function TasksPage() {
   });
 
   const visibleTasks = useMemo(
-    () =>
-      scope === "archived"
+    () => {
+      const normalized = search.trim().toLocaleLowerCase();
+      const scoped = scope === "archived"
         ? tasks.data?.items ?? []
-        : tasks.data?.items.filter((task) => matchesFilter(task.status, filter)) ?? [],
-    [filter, scope, tasks.data]
+        : tasks.data?.items.filter((task) => matchesFilter(task.status, filter)) ?? [];
+      if (!normalized) return scoped;
+      return scoped.filter((task) =>
+        `${task.title} ${task.original_title} ${task.source_url} ${task.category}`
+          .toLocaleLowerCase()
+          .includes(normalized)
+      );
+    },
+    [filter, scope, search, tasks.data]
   );
   const counts = useMemo(
     () =>
@@ -259,6 +284,12 @@ export default function TasksPage() {
       ) as Record<Filter, number>,
     [tasks.data]
   );
+  const selectedFailed = useMemo(
+    () => visibleTasks.filter((task) => selected.includes(task.id) && task.status === "failed").map((task) => task.id),
+    [selected, visibleTasks]
+  );
+  const selectedVisibleCount = visibleTasks.filter((task) => selected.includes(task.id)).length;
+  const allVisibleSelected = visibleTasks.length > 0 && selectedVisibleCount === visibleTasks.length;
 
   const dialogBusy =
     archiveTask.isPending ||
@@ -290,39 +321,25 @@ export default function TasksPage() {
     <>
       <PageHeader
         title={scope === "archived" ? "任务回收站" : "媒体任务"}
-        description={
-          scope === "archived"
-            ? "恢复误删任务、跟踪文件清理，或在媒体已清理后永久删除记录。"
-            : "按处理轨道查看进度、失败点和重试结果。"
-        }
         actions={
-          <Link to="/tasks/new" className="button button-primary">
-            新建任务
-          </Link>
+          <>
+            <button
+              type="button"
+              className="button button-secondary button-small"
+              onClick={() => setSearchParams(scope === "active" ? { scope: "archived" } : {})}
+            >
+              {scope === "active" ? "回收站" : "返回工作列表"}
+            </button>
+            <Link to="/tasks/new" className="button button-primary">
+              <Icon name="plus" />
+              新建任务
+            </Link>
+          </>
         }
       />
 
-      <section className="task-scope-switch" aria-label="任务列表范围">
-        <button
-          type="button"
-          className={scope === "active" ? "active" : ""}
-          aria-pressed={scope === "active"}
-          onClick={() => setSearchParams({})}
-        >
-          工作列表
-        </button>
-        <button
-          type="button"
-          className={scope === "archived" ? "active" : ""}
-          aria-pressed={scope === "archived"}
-          onClick={() => setSearchParams({ scope: "archived" })}
-        >
-          回收站
-        </button>
-      </section>
-
-      {scope === "active" ? (
-        <section className="task-control-strip" aria-label="任务筛选与批量操作">
+      <section className="task-control-strip prototype-task-toolbar" aria-label="任务筛选与批量操作">
+        {scope === "active" ? (
           <div className="filter-tabs" role="tablist" aria-label="任务状态筛选">
             {filters.map((item) => (
               <button
@@ -343,17 +360,29 @@ export default function TasksPage() {
               </button>
             ))}
           </div>
+        ) : <div className="prototype-task-toolbar-spacer" />}
+        <label className="task-table-search">
+          <span className="sr-only">搜索任务</span>
+          <Icon name="search" />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="搜索任务"
+          />
+        </label>
+        {scope === "active" ? (
           <div className="task-control-actions">
             <button
               className="button button-secondary"
               type="button"
-              disabled={selected.length === 0 || bulkRetry.isPending}
-              onClick={() => bulkRetry.mutate(selected)}
+              disabled={selectedFailed.length === 0 || bulkRetry.isPending}
+              onClick={() => bulkRetry.mutate(selectedFailed)}
             >
               {bulkRetry.isPending
                 ? "正在投递…"
-                : selected.length > 0
-                  ? `重试选中项 ${selected.length}`
+                : selectedFailed.length > 0
+                  ? `重试失败项 ${selectedFailed.length}`
                   : "选择失败项后重试"}
             </button>
             <button
@@ -382,8 +411,8 @@ export default function TasksPage() {
               ↻
             </button>
           </div>
-        </section>
-      ) : null}
+        ) : null}
+      </section>
 
       {notice ? (
         <TransientNotice
@@ -392,6 +421,23 @@ export default function TasksPage() {
         >
           {notice}
         </TransientNotice>
+      ) : null}
+
+      {actionError && !dialog ? (
+        <TransientNotice tone="error" onDismiss={() => setActionError("")}>
+          {actionError}
+        </TransientNotice>
+      ) : null}
+
+      {selected.length > 0 ? (
+        <div className="task-batch-bar" role="status">
+          <span className="task-batch-icon" aria-hidden="true"><Icon name="review" /></span>
+          <strong>已选择 {selected.length} 个任务{selectedFailed.length > 0 ? `，其中 ${selectedFailed.length} 个可重试` : ""}</strong>
+          {selectedFailed.length > 0 ? <button className="button button-primary" type="button" disabled={bulkRetry.isPending} onClick={() => bulkRetry.mutate(selectedFailed)}>
+            {bulkRetry.isPending ? "正在重试…" : "重试"}
+          </button> : null}
+          <button className="button button-secondary" type="button" onClick={() => setSelected([])}>取消选择</button>
+        </div>
       ) : null}
 
       {tasks.isPending ? (
@@ -419,21 +465,46 @@ export default function TasksPage() {
               <Link to="/tasks/new" className="button button-primary">
                 新建任务
               </Link>
+            ) : scope === "active" ? (
+              <button
+                className="button button-secondary"
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setSearchParams({}, { replace: true });
+                }}
+              >
+                清除筛选
+              </button>
             ) : undefined
           }
         />
       ) : (
-        <section className="work-panel task-list-panel" aria-label="任务列表">
-          <div className="task-list-caption">
-            <span>{visibleTasks.length} 条结果</span>
-            <span>
-              {scope === "archived"
-                ? "永久删除前必须先完成媒体文件清理"
-                : "运行中任务需先取消，再移入回收站"}
-            </span>
+        <section className="work-panel task-list-panel prototype-task-table" aria-label="任务列表">
+          <div className="prototype-task-table-head">
+            <label className="prototype-task-check prototype-task-check-all">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                aria-label="选择当前列表全部任务"
+                onChange={(event) => {
+                  const visibleIDs = new Set(visibleTasks.map((task) => task.id));
+                  setSelected((current) => event.target.checked
+                    ? [...new Set([...current, ...visibleIDs])]
+                    : current.filter((taskID) => !visibleIDs.has(taskID)));
+                }}
+              />
+            </label>
+            <span>任务</span>
+            <span>平台</span>
+            <span>状态</span>
+            <span>进度</span>
+            <span>操作</span>
           </div>
-          <div className="track-list">
+          <div className="prototype-task-table-body">
             {visibleTasks.map((task) => {
+              const step = currentStep(task);
+              const progress = step ? taskStepProgress(step) : 0;
               const remainingAssets = task.assets.filter(
                 (asset) => asset.status !== "deleted"
               );
@@ -444,27 +515,55 @@ export default function TasksPage() {
                 ["available", "failed"].includes(asset.status)
               );
               return (
-                <TaskTrack
-                  task={task}
-                  key={task.id}
-                  selectable={scope === "active" && task.status === "failed"}
-                  selected={selected.includes(task.id)}
-                  onSelect={(checked) =>
-                    setSelected((current) =>
-                      checked
-                        ? [...new Set([...current, task.id])]
-                        : current.filter((taskID) => taskID !== task.id)
-                    )
-                  }
-                  actions={
-                    scope === "active" ? (
+                <article className="prototype-task-row" key={task.id}>
+                  <label className="prototype-task-check">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(task.id)}
+                      aria-label={`选择任务 ${shortID(task.id)}`}
+                      onChange={(event) =>
+                        setSelected((current) =>
+                          event.target.checked
+                            ? [...new Set([...current, task.id])]
+                            : current.filter((taskID) => taskID !== task.id)
+                        )
+                      }
+                    />
+                  </label>
+                  <div className="prototype-task-identity">
+                    {task.thumbnail_url ? (
+                      <img src={task.thumbnail_url} alt="" loading="lazy" />
+                    ) : (
+                      <span className="prototype-task-thumb"><Icon name="media" /></span>
+                    )}
+                    <div>
+                      <strong><Link to={`/tasks/${task.id}`}><TaskTitle task={task} /></Link></strong>
+                      <small title={task.source_url}>
+                        {task.source_url.replace(/^https?:\/\//, "").slice(0, 42)} · {formatRelativeTime(task.updated_at)}
+                      </small>
+                      {task.error_message ? <em>{task.error_message}</em> : null}
+                    </div>
+                  </div>
+                  <PlatformChips platforms={task.target_platforms} />
+                  <StatusBadge status={taskStatusForDisplay(task)} />
+                  <div className="prototype-task-progress">
+                    <ProgressBar
+                      value={progress}
+                      label={`${step ? stepLabel(step.kind) : "任务"}进度`}
+                      tone={step?.status === "failed" ? "danger" : task.paused_at ? "paused" : "primary"}
+                      compact
+                    />
+                    <small>{task.paused_at ? "已暂停" : step ? `${stepLabel(step.kind)} ${progress.toFixed(0)}%` : "等待处理"}</small>
+                  </div>
+                  <div className="prototype-task-actions">
+                    {scope === "active" ? (
                       <>
-                        <Link className="button button-secondary" to={`/tasks/${task.id}`}>
-                          查看详情
-                        </Link>
+                        <button className="button button-secondary" type="button" onClick={() => setPreviewTask(task)}>
+                          详情
+                        </button>
                         {(Boolean(task.paused_at) || pausableStatuses.has(task.status)) && (
                           <button
-                            className="button button-secondary"
+                            className="button button-text"
                             type="button"
                             disabled={taskControl.isPending}
                             onClick={() =>
@@ -474,25 +573,9 @@ export default function TasksPage() {
                               })
                             }
                           >
-                            {task.paused_at ? "继续处理" : "暂停处理"}
+                            {task.paused_at ? "继续" : "暂停"}
                           </button>
                         )}
-                        <button
-                          className="button button-secondary"
-                          type="button"
-                          disabled={!archivableStatuses.has(task.status)}
-                          title={
-                            archivableStatuses.has(task.status)
-                              ? "移入回收站"
-                              : "请先取消并等待任务安全停止"
-                          }
-                          onClick={() => {
-                            setActionError("");
-                            setDialog({ mode: "archive", task });
-                          }}
-                        >
-                          删除任务
-                        </button>
                       </>
                     ) : (
                       <>
@@ -505,7 +588,7 @@ export default function TasksPage() {
                             setDialog({ mode: "restore", task });
                           }}
                         >
-                          恢复任务
+                          恢复
                         </button>
                         {cleanupAvailable ? (
                           <button
@@ -514,11 +597,11 @@ export default function TasksPage() {
                             disabled={cleanupAssets.isPending}
                             onClick={() => cleanupAssets.mutate(task.id)}
                           >
-                            清理文件
+                            清理
                           </button>
                         ) : cleanupPending ? (
                           <button className="button button-secondary" type="button" disabled>
-                            文件清理中
+                            清理中
                           </button>
                         ) : null}
                         <button
@@ -538,9 +621,9 @@ export default function TasksPage() {
                           永久删除
                         </button>
                       </>
-                    )
-                  }
-                />
+                    )}
+                  </div>
+                </article>
               );
             })}
           </div>
@@ -564,6 +647,81 @@ export default function TasksPage() {
           onConfirm={submitDialog}
         />
       ) : null}
+
+      <ModalDialog
+        open={Boolean(previewTask)}
+        title={previewTask ? `任务详情 · ${previewTask.title || previewTask.original_title || shortID(previewTask.id)}` : "任务详情"}
+        description={previewTask ? `任务 ${shortID(previewTask.id)} · 创建于 ${formatDateTime(previewTask.created_at)} · ${previewTask.extractor || "视频来源"}` : undefined}
+        icon="file"
+        size="wide"
+        onClose={() => setPreviewTask(undefined)}
+        footer={previewTask ? (
+          <>
+            <button
+              className="button button-secondary"
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(previewTask.id).then(() => setNotice("任务 ID 已复制"));
+              }}
+            >
+              复制 ID
+            </button>
+            {archivableStatuses.has(previewTask.status) ? (
+              <button
+                className="button button-text button-text-danger"
+                type="button"
+                onClick={() => {
+                  setPreviewTask(undefined);
+                  setActionError("");
+                  setDialog({ mode: "archive", task: previewTask });
+                }}
+              >
+                移入回收站
+              </button>
+            ) : null}
+            <span className="modal-footer-spacer" />
+            <Link className="button button-primary" to={`/tasks/${previewTask.id}`} onClick={() => setPreviewTask(undefined)}>
+              打开完整详情
+            </Link>
+          </>
+        ) : undefined}
+      >
+        {previewTask ? (
+          <div className="task-quick-dialog">
+            <div className="task-quick-stages">
+              {orderedTaskSteps(previewTask.steps).slice(0, 5).map((step) => (
+                <div key={step.kind}>
+                  <small>{stepLabel(step.kind)}</small>
+                  <strong>{["succeeded", "skipped"].includes(step.status) ? "完成" : step.status === "running" ? `处理中 ${taskStepProgress(step).toFixed(0)}%` : step.status === "failed" ? "失败" : "待启动"}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="task-quick-columns">
+              <section>
+                <h3>输入信息</h3>
+                <dl>
+                  <div><dt>视频源</dt><dd title={previewTask.source_url}>{previewTask.source_url}</dd></div>
+                  <div><dt>投稿策略</dt><dd>{previewTask.posting_strategy_id ? "已选择投稿策略" : "默认策略"}</dd></div>
+                  <div><dt>目标平台</dt><dd>{previewTask.target_platforms.join("、") || "未选择"}</dd></div>
+                  <div><dt>审核方式</dt><dd>{previewTask.review_mode === "automatic" ? "自动审核" : "人工审核"}</dd></div>
+                </dl>
+              </section>
+              <section>
+                <h3>最近处理</h3>
+                <div className="task-quick-log">
+                  {orderedTaskSteps(previewTask.steps).slice(-5).map((step) => (
+                    <p key={step.kind}>
+                      <span>{formatDateTime(step.updated_at)}</span>
+                      <strong>{stepLabel(step.kind)}</strong>
+                      <em>{["succeeded", "skipped"].includes(step.status) ? "完成" : step.status === "failed" ? "失败" : step.status === "running" ? "处理中" : "等待"}</em>
+                    </p>
+                  ))}
+                </div>
+              </section>
+            </div>
+          </div>
+        ) : null}
+      </ModalDialog>
     </>
   );
 }

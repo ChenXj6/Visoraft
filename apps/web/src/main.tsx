@@ -7,6 +7,8 @@ import { ThemeProvider } from "./product-ui";
 import "./styles.css";
 import "./theme-ac.css";
 import "./product-ui.css";
+import "./v4-ui.css";
+import "./prototype-ui.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {

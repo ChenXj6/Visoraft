@@ -1,18 +1,18 @@
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { api, type MediaAsset } from "../api";
-import { EmptyState, LoadingBlock, PageHeader, QueryError } from "../components";
-import { assetKindLabel, formatBytes, formatDateTime, shortID, statusLabel } from "../format";
+import { api, ApiError, type LocalLibraryAsset } from "../api";
+import { ConfirmDialog, EmptyState, LoadingBlock, QueryError, SideDrawer } from "../components";
+import { assetKindLabel, formatBytes, formatDateTime } from "../format";
 import { Icon } from "../icons";
+import { TransientNotice } from "../product-ui";
 
-function fileExtension(asset: MediaAsset) {
-  const name = asset.original_name || asset.object_key;
-  const dot = name.lastIndexOf(".");
-  return dot >= 0 ? name.slice(dot + 1).toUpperCase() : "文件";
+function fileExtension(asset: LocalLibraryAsset) {
+  const dot = asset.original_name.lastIndexOf(".");
+  return dot >= 0 ? asset.original_name.slice(dot + 1).toUpperCase() : "文件";
 }
 
-function isViewable(asset: MediaAsset) {
+function isViewable(asset: LocalLibraryAsset) {
   return asset.content_type.startsWith("video/") ||
     asset.content_type.startsWith("audio/") ||
     asset.content_type.startsWith("image/") ||
@@ -20,149 +20,285 @@ function isViewable(asset: MediaAsset) {
     asset.content_type === "application/json";
 }
 
+function localStatusLabel(asset: LocalLibraryAsset) {
+  switch (asset.local_status) {
+    case "available": return "已存本地";
+    case "syncing": return "正在同步";
+    case "missing": return "本地缺失";
+    case "removed": return "已从本地删除";
+    case "error": return "同步失败";
+    default: return "等待同步";
+  }
+}
+
 export default function FileLibraryPage() {
+  const queryClient = useQueryClient();
+  const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const [showDeleted, setShowDeleted] = useState(false);
+  const [selectedKey, setSelectedKey] = useState("");
+  const [expandedTaskId, setExpandedTaskId] = useState("");
+  const [notice, setNotice] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<LocalLibraryAsset | null>(null);
+  const [storageOpen, setStorageOpen] = useState(false);
   const library = useQuery({
     queryKey: ["files"],
     queryFn: api.files,
     refetchInterval: 10_000
   });
 
-  const folders = useMemo(() => {
+  useEffect(() => {
+    const collections = library.data?.collections ?? [];
+    const first = collections[0];
+    if (first && !collections.some((item) => item.key === selectedKey)) {
+      setSelectedKey(first.key);
+    }
+  }, [library.data?.collections, selectedKey]);
+
+  useEffect(() => {
+    const focusFileSearch = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", focusFileSearch);
+    return () => window.removeEventListener("keydown", focusFileSearch);
+  }, []);
+
+  const syncFile = useMutation({
+    mutationFn: api.syncLocalFile,
+    onSuccess: async () => {
+      setNotice("文件已开始同步到本地媒体库");
+      await queryClient.invalidateQueries({ queryKey: ["files"] });
+    },
+    onError: (error) => setNotice(error instanceof ApiError ? error.message : "文件同步失败")
+  });
+
+  const removeFile = useMutation({
+    mutationFn: api.deleteLocalFile,
+    onSuccess: async () => {
+      setPendingDelete(null);
+      setNotice("本地副本已删除，任务和系统原文件仍保留");
+      await queryClient.invalidateQueries({ queryKey: ["files"] });
+    },
+    onError: (error) => setNotice(error instanceof ApiError ? error.message : "删除本地副本失败")
+  });
+
+  const selected = useMemo(() => {
+    const collection = library.data?.collections.find((item) => item.key === selectedKey);
+    if (!collection) return undefined;
     const normalized = query.trim().toLocaleLowerCase();
-    return (library.data?.folders ?? [])
-      .map((folder) => ({
-        ...folder,
-        files: folder.files.filter((file) => {
-          if (!showDeleted && (file.deleted_at || file.status === "deleted")) return false;
-          if (!normalized) return true;
-          return `${folder.title} ${file.original_name} ${assetKindLabel(file.kind)}`
-            .toLocaleLowerCase()
-            .includes(normalized);
-        })
-      }))
-      .filter((folder) => folder.files.length > 0);
-  }, [library.data?.folders, query, showDeleted]);
+    if (!normalized) return collection;
+    return {
+      ...collection,
+      folders: collection.folders
+        .map((folder) => ({
+          ...folder,
+          files: folder.files.filter((file) =>
+            `${folder.title} ${file.original_name} ${assetKindLabel(file.kind)} ${folder.series_scope ?? ""}`
+              .toLocaleLowerCase()
+              .includes(normalized)
+          )
+        }))
+        .filter((folder) => folder.files.length > 0)
+    };
+  }, [library.data?.collections, query, selectedKey]);
+  const activeFolder = selected?.folders.find((folder) => folder.task_id === expandedTaskId) ?? selected?.folders[0];
+
+  useEffect(() => {
+    const firstFolder = selected?.folders[0];
+    if (firstFolder && !selected?.folders.some((folder) => folder.task_id === expandedTaskId)) {
+      setExpandedTaskId(firstFolder.task_id);
+    }
+  }, [expandedTaskId, selected]);
 
   return (
-    <>
-      <PageHeader
-        title="文件中心"
-        description="按任务查看下载的视频、封面、字幕和处理结果。文件由系统统一保管，可随时查看或下载到电脑。"
-        actions={
-          <Link className="button button-primary" to="/tasks/new">
-            新建任务
-          </Link>
-        }
-      />
+    <div className="file-browser-page">
+      <h1 className="sr-only">本地文件</h1>
+      <section className="prototype-file-page-toolbar" aria-label="文件搜索与操作">
+        <label className="prototype-file-search">
+          <Icon name="search" />
+          <input ref={searchRef} type="search" value={query} placeholder="搜索文件名…" onChange={(event) => setQuery(event.target.value)} />
+          <kbd>Ctrl F</kbd>
+        </label>
+        <div>
+          <button className="button button-secondary button-small" type="button" disabled={!library.data?.settings.host_path} title={library.data?.settings.host_path} onClick={() => setStorageOpen(true)}>查看本地位置</button>
+          <button className="button button-primary button-small" type="button" disabled={library.isFetching} onClick={() => void library.refetch()}>{library.isFetching ? "扫描中" : "重新扫描"}</button>
+          <Link className="button button-secondary button-small" to="/settings?section=library">存储设置</Link>
+        </div>
+      </section>
+
+      {notice && (
+        <TransientNotice tone={/失败/.test(notice) ? "error" : "success"} onDismiss={() => setNotice("")}>
+          {notice}
+        </TransientNotice>
+      )}
 
       {library.isPending ? (
-        <LoadingBlock label="正在整理任务文件" />
+        <LoadingBlock label="正在读取本地媒体库" />
       ) : library.isError ? (
-        <QueryError
-          title="文件中心暂时不可用"
-          message={library.error.message}
-          retry={() => void library.refetch()}
-        />
-      ) : !library.data || library.data.file_count === 0 ? (
-        <EmptyState
-          title="还没有任务文件"
-          description="创建任务并完成下载后，视频、封面和后续生成文件会出现在这里。"
-          action={<Link className="button button-primary" to="/tasks/new">创建任务</Link>}
-        />
-      ) : (
+        <QueryError title="本地文件暂时不可用" message={library.error.message} retry={() => void library.refetch()} />
+      ) : library.data ? (
         <>
-          <section className="file-summary" aria-label="文件汇总">
-            <div><span>任务文件夹</span><strong>{library.data.folder_count}</strong></div>
-            <div><span>可用文件</span><strong>{library.data.available_count}</strong></div>
-            <div><span>占用空间</span><strong>{formatBytes(library.data.total_bytes)}</strong></div>
-            <div><span>已清理记录</span><strong>{library.data.deleted_count}</strong></div>
-          </section>
+          {library.data.settings.restart_required && (
+            <section className="local-path-pending" role="status">
+              新位置已保存，运行 <code>.\scripts\local.ps1 storage</code> 后生效。
+            </section>
+          )}
 
-          <section className="file-toolbar" aria-label="文件筛选">
-            <label>
-              <span className="sr-only">搜索文件</span>
-              <Icon name="search" />
-              <input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索任务名称或文件名"
-              />
-            </label>
-            <label className="file-deleted-toggle">
-              <input
-                type="checkbox"
-                checked={showDeleted}
-                onChange={(event) => setShowDeleted(event.target.checked)}
-              />
-              显示已清理记录
-            </label>
-          </section>
-
-          {folders.length === 0 ? (
-            <EmptyState title="没有匹配文件" description="调整搜索条件或显示已清理记录后再试。" />
+          {library.data.file_count === 0 ? (
+            <EmptyState
+              title="还没有可整理的文件"
+              description="任务生成媒体文件后，会自动同步到上面的本地目录。"
+              action={<Link className="button button-primary" to="/tasks/new">新建任务</Link>}
+            />
           ) : (
-            <div className="file-folders">
-              {folders.map((folder) => (
-                <details className="file-folder" open key={folder.task_id}>
-                  <summary>
-                    <span className="file-folder-icon"><Icon name="folder" /></span>
-                    <div>
-                      <strong title={folder.title}>{folder.title}</strong>
-                      <small>
-                        任务 #{shortID(folder.task_id)} · {folder.available_count} 个可用文件 · {formatBytes(folder.total_bytes)}
-                      </small>
-                    </div>
-                    <span className="file-folder-state">
-                      {folder.archived ? "已归档" : statusLabel(folder.status)}
+            <div className="local-library-layout prototype-file-browser">
+              <aside className="local-collections" aria-label="文件集合">
+                <div className="local-collection-heading"><strong>文件集合</strong><span>{library.data.collection_count}</span></div>
+                {library.data.collections.map((collection) => (
+                  <button
+                    type="button"
+                    className={selectedKey === collection.key ? "is-active" : ""}
+                    onClick={() => {
+                      setSelectedKey(collection.key);
+                      setExpandedTaskId("");
+                    }}
+                    key={collection.key}
+                  >
+                    <span className="local-collection-icon"><Icon name={collection.kind === "monitor" ? "monitor" : "folder"} /></span>
+                    <span>
+                      <strong title={collection.title}>{collection.title}</strong>
+                      <small>{collection.folder_count} {collection.kind === "monitor" ? "集" : "个任务"} · {collection.file_count} 个文件</small>
                     </span>
-                    <Link to={`/tasks/${folder.task_id}`} onClick={(event) => event.stopPropagation()}>
-                      查看任务
-                    </Link>
-                  </summary>
-                  <div className="file-list" role="list">
-                    {folder.files.map((file) => {
-                      const deleted = Boolean(file.deleted_at) || file.status === "deleted";
-                      const contentURL = api.assetContentURL(folder.task_id, file.id);
-                      return (
-                        <article className={`file-row ${deleted ? "file-row-deleted" : ""}`} role="listitem" key={file.id}>
-                          <span className="file-type-icon"><Icon name="file" /></span>
-                          <div className="file-name">
-                            <strong title={file.original_name}>{file.original_name || assetKindLabel(file.kind)}</strong>
-                            <small>{assetKindLabel(file.kind)} · {fileExtension(file)}</small>
-                          </div>
-                          <div className="file-location">
-                            <span>文件位置</span>
-                            <strong>任务文件 / {shortID(folder.task_id)} / {file.original_name}</strong>
-                          </div>
-                          <div className="file-meta">
-                            <span>{deleted ? "已清理" : formatBytes(file.size_bytes)}</span>
-                            <small>{formatDateTime(file.created_at)}</small>
-                          </div>
-                          <div className="file-actions">
-                            {!deleted && isViewable(file) && (
-                              <a className="button button-secondary button-small" href={contentURL} target="_blank" rel="noreferrer">
-                                查看
-                              </a>
-                            )}
-                            {!deleted && (
-                              <a className="button button-primary button-small" href={contentURL} download={file.original_name}>
-                                下载
-                              </a>
-                            )}
-                          </div>
-                        </article>
-                      );
-                    })}
+                  </button>
+                ))}
+              </aside>
+
+              <aside className="prototype-folder-tree work-panel" aria-label="任务文件夹">
+                <header><strong>文件夹</strong><span>{selected?.folder_count ?? 0}</span></header>
+                {!selected || selected.folders.length === 0 ? (
+                  <p>没有匹配文件夹</p>
+                ) : selected.folders.map((folder) => (
+                  <button
+                    type="button"
+                    className={activeFolder?.task_id === folder.task_id ? "is-active" : ""}
+                    onClick={() => setExpandedTaskId(folder.task_id)}
+                    key={folder.task_id}
+                  >
+                    <Icon name="folder" />
+                    <span>
+                      <strong>{folder.episode_number ? `第 ${folder.episode_number} 集` : "单条任务"}</strong>
+                      <small title={folder.title}>{folder.title}</small>
+                    </span>
+                    <em>{folder.file_count}</em>
+                  </button>
+                ))}
+              </aside>
+
+              <section className="local-library-main prototype-file-stage">
+                <header className="local-library-toolbar">
+                  <div className="local-library-title">
+                    <strong>全部文件 · {selected?.title}{activeFolder?.episode_number ? ` / 第 ${activeFolder.episode_number} 集` : ""}</strong>
                   </div>
-                </details>
-              ))}
+                  {activeFolder ? <span className="local-library-summary">{activeFolder.file_count} 个文件 · {formatBytes(activeFolder.local_bytes)}</span> : null}
+                </header>
+
+                {!activeFolder ? (
+                  <EmptyState title="没有匹配文件" description="请调整搜索内容后重试。" />
+                ) : (
+                  <>
+                    <div className="prototype-file-grid" role="list">
+                      {activeFolder.files.map((file) => {
+                        const busy = syncFile.isPending || removeFile.isPending;
+                        const canonicalAvailable = file.asset_status === "available" && !file.asset_deleted_at;
+                        const contentURL = api.assetContentURL(activeFolder.task_id, file.id);
+                        return (
+                          <article className="prototype-file-tile" role="listitem" key={file.id}>
+                            <div className="prototype-file-preview">
+                              {file.content_type.startsWith("image/") && canonicalAvailable ? (
+                                <img src={contentURL} alt="" loading="lazy" />
+                              ) : file.content_type.startsWith("video/") && canonicalAvailable ? (
+                                <video src={contentURL} muted preload="metadata" />
+                              ) : (
+                                <Icon name={file.content_type.startsWith("video/") ? "media" : "file"} />
+                              )}
+                              <span>{fileExtension(file)}</span>
+                            </div>
+                            <div className="prototype-file-copy">
+                              <strong title={file.original_name}>{file.original_name || assetKindLabel(file.kind)}</strong>
+                              <div className="prototype-file-meta">
+                                <span className={`local-file-status is-${file.local_status}`}>{localStatusLabel(file)}</span>
+                                <small>{formatBytes(file.size_bytes)}</small>
+                              </div>
+                            </div>
+                            <div className="prototype-file-actions">
+                              {canonicalAvailable && isViewable(file) ? <a href={contentURL} target="_blank" rel="noreferrer">查看</a> : null}
+                              {file.local_status === "available" ? (
+                                <button type="button" disabled={busy} onClick={() => setPendingDelete(file)}>删除本地</button>
+                              ) : canonicalAvailable ? (
+                                <button type="button" disabled={busy || file.local_status === "syncing"} onClick={() => syncFile.mutate(file.id)}>
+                                  {file.local_status === "syncing" ? "同步中" : "同步到本地"}
+                                </button>
+                              ) : null}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </section>
             </div>
           )}
         </>
-      )}
-    </>
+      ) : null}
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="删除本地副本？"
+        description={`“${pendingDelete?.original_name ?? "该文件"}”只会从电脑上的媒体库移除，任务记录和系统原文件仍然保留。`}
+        confirmLabel="删除本地副本"
+        destructive
+        busy={removeFile.isPending}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => pendingDelete && removeFile.mutate(pendingDelete.id)}
+      />
+      <SideDrawer
+        open={storageOpen}
+        title="本地存储位置"
+        onClose={() => setStorageOpen(false)}
+        footer={
+          <>
+            <button className="button button-secondary button-small" type="button" onClick={() => setStorageOpen(false)}>
+              关闭
+            </button>
+            <Link className="button button-primary button-small" to="/settings?section=library" onClick={() => setStorageOpen(false)}>
+              存储设置
+            </Link>
+          </>
+        }
+      >
+        {library.data ? (
+          <div className="storage-location-card">
+            <span className={`local-path-state ${library.data.settings.writable ? "is-ready" : "is-error"}`}>
+              {library.data.settings.writable ? "可写入" : "不可写入"}
+            </span>
+            <code>{library.data.settings.host_path}</code>
+            <button
+              className="button button-secondary button-small"
+              type="button"
+              onClick={() => void navigator.clipboard
+                .writeText(library.data!.settings.host_path)
+                .then(() => setNotice("本地存储路径已复制"))
+                .catch(() => setNotice("路径复制失败，请手动选择复制"))}
+            >
+              复制路径
+            </button>
+            {library.data.settings.restart_required ? <p>新位置已保存，重启本地服务后生效。</p> : null}
+          </div>
+        ) : null}
+      </SideDrawer>
+    </div>
   );
 }

@@ -29,12 +29,23 @@ const (
 )
 
 type CreateInput struct {
-	SourceURL              string   `json:"source_url"`
-	TargetPlatforms        []string `json:"target_platforms"`
-	CookieProfileID        *string  `json:"cookie_profile_id,omitempty"`
-	RepostStatementVersion string   `json:"repost_statement_version"`
-	PostingStrategyID      *string  `json:"posting_strategy_id,omitempty"`
-	AutoPublish            bool     `json:"auto_publish"`
+	SourceURL              string      `json:"source_url"`
+	TargetPlatforms        []string    `json:"target_platforms"`
+	CookieProfileID        *string     `json:"cookie_profile_id,omitempty"`
+	RepostStatementVersion string      `json:"repost_statement_version"`
+	PostingStrategyID      *string     `json:"posting_strategy_id,omitempty"`
+	AutoPublish            bool        `json:"auto_publish"`
+	Origin                 *TaskOrigin `json:"-"`
+}
+
+type TaskOrigin struct {
+	Kind            string `json:"kind"`
+	MonitorID       string `json:"monitor_id,omitempty"`
+	MonitorName     string `json:"monitor_name,omitempty"`
+	SeriesTitle     string `json:"series_title,omitempty"`
+	SeriesScopeKey  string `json:"series_scope_key,omitempty"`
+	SeriesScopeName string `json:"series_scope_name,omitempty"`
+	EpisodeNumber   int    `json:"episode_number,omitempty"`
 }
 
 type Step struct {
@@ -95,6 +106,7 @@ type Task struct {
 	CookieProfileID   *string          `json:"cookie_profile_id,omitempty"`
 	PostingStrategyID *string          `json:"posting_strategy_id,omitempty"`
 	AutoPublish       bool             `json:"auto_publish"`
+	Origin            TaskOrigin       `json:"origin"`
 	PublishJobID      *string          `json:"publish_job_id,omitempty"`
 	PublishStatus     string           `json:"publish_status"`
 	PublishMode       string           `json:"publish_mode"`

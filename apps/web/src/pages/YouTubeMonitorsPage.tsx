@@ -1,12 +1,11 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, ApiError, type YouTubeMonitor } from "../api";
 import {
   ConfirmDialog,
   EmptyState,
   LoadingBlock,
-  PageHeader,
   QueryError
 } from "../components";
 import { formatDateTime, friendlyErrorMessage } from "../format";
@@ -24,6 +23,19 @@ function monitorStateLabel(item: YouTubeMonitor) {
   return item.schedule_type === "automatic" ? "自动监控" : "手动";
 }
 
+function monitorDisplayName(item: YouTubeMonitor) {
+  const readable = (value?: string) =>
+    Boolean(value?.trim()) && !/^[?？\s._-]+$/.test(value?.trim() ?? "");
+  if (readable(item.name)) return item.name.trim();
+  if (readable(item.series_title)) return item.series_title.trim();
+  if (readable(item.query)) return item.query.trim();
+  if (item.channel_ids.length > 0) return `频道监控 · ${item.channel_ids[0]}`;
+  if (item.monitor_type === "series") {
+    return `完整剧集监控（${item.episode_start}–${item.episode_end} 集）`;
+  }
+  return item.monitor_type === "channel" ? "频道监控" : "关键词监控";
+}
+
 export default function YouTubeMonitorsPage() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState("");
@@ -34,6 +46,21 @@ export default function YouTubeMonitorsPage() {
     queryFn: api.youtubeMonitors,
     refetchInterval: 5_000
   });
+  const monitorItems = monitors.data?.items ?? [];
+  const histories = useQueries({
+    queries: monitorItems.map((item) => ({
+      queryKey: ["youtube-monitor-history", item.id],
+      queryFn: () => api.youtubeMonitorHistory(item.id),
+      staleTime: 15_000,
+      refetchInterval: 30_000
+    }))
+  });
+  const latestRunByMonitor = useMemo(
+    () => new Map(
+      monitorItems.map((item, index) => [item.id, histories[index]?.data?.runs[0]])
+    ),
+    [histories, monitorItems]
+  );
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["youtube-monitors"] });
@@ -93,15 +120,24 @@ export default function YouTubeMonitorsPage() {
 
   return (
     <>
-      <PageHeader
-        title="发现与监控"
-        description="按关键词、频道或完整剧集持续发现视频，完成过滤、去重后可进入同一条任务流水线。"
-        actions={
+      <header className="page-header prototype-monitor-page-header">
+        <div className="page-heading">
+          <h1>
+            YouTube 监控
+            <span className="prototype-monitor-count">{stats.total} 个</span>
+          </h1>
+        </div>
+        <div className="page-actions">
+          {monitors.data?.items[0] ? (
+            <Link className="button button-secondary button-small" to={`/monitors/${monitors.data.items[0].id}/history`}>
+              检查记录
+            </Link>
+          ) : null}
           <Link className="button button-primary" to="/monitors/new">
             新建监控
           </Link>
-        }
-      />
+        </div>
+      </header>
 
       {notice && (
         <TransientNotice
@@ -111,25 +147,6 @@ export default function YouTubeMonitorsPage() {
           {notice}
         </TransientNotice>
       )}
-
-      <dl className="monitor-ledger">
-        <div>
-          <dt>配置总数</dt>
-          <dd>{stats.total}</dd>
-        </div>
-        <div>
-          <dt>自动调度</dt>
-          <dd>{stats.automatic}</dd>
-        </div>
-        <div>
-          <dt>执行中</dt>
-          <dd>{stats.running}</dd>
-        </div>
-        <div>
-          <dt>异常</dt>
-          <dd>{stats.errors}</dd>
-        </div>
-      </dl>
 
       {monitors.isPending && <LoadingBlock label="正在读取监控配置" />}
       {monitors.isError && (
@@ -151,76 +168,86 @@ export default function YouTubeMonitorsPage() {
         />
       )}
 
-      <div className="monitor-list">
-        {monitors.data?.items.map((item) => (
-          <article className="monitor-row work-panel" key={item.id}>
-            <div className="monitor-mode">
-              <Icon name={item.monitor_type === "channel" ? "channel" : item.monitor_type === "series" ? "history" : "discovery"} />
-              <strong>
-                {item.monitor_type === "channel"
-                  ? "频道"
-                  : item.monitor_type === "series"
-                    ? "剧集"
-                    : "搜索"}
-              </strong>
-            </div>
-            <div className="monitor-copy">
+      <div id="monitor-list" className="monitor-grid prototype-monitor-grid">
+        {monitors.data?.items.map((item) => {
+          const latestRun = latestRunByMonitor.get(item.id);
+          const isError = item.state === "error";
+          return (
+          <article className={`prototype-monitor-card work-panel ${isError ? "has-error" : ""}`} key={item.id}>
+            <div className="prototype-monitor-card-head">
+              <span className="prototype-monitor-avatar">
+                <Icon name={item.monitor_type === "channel" ? "channel" : item.monitor_type === "series" ? "history" : "discovery"} />
+              </span>
+              <div className="monitor-copy">
+                <h2>{monitorDisplayName(item)}</h2>
+                <p>
+                  {item.monitor_type === "channel"
+                    ? item.channel_ids.join("、") || "未配置频道"
+                    : item.monitor_type === "series"
+                      ? `${item.series_title} · ${Math.max(1, item.series_scopes.length)} 个篇章 · ${
+                          item.series_scopes.length > 0
+                            ? item.series_scopes.reduce(
+                                (total, scope) => total + scope.episode_end - scope.episode_start + 1,
+                                0
+                              )
+                            : item.episode_end - item.episode_start + 1
+                        } 集`
+                      : item.query || item.include_keywords.join("、")}
+                </p>
+              </div>
               <div>
                 <span className={`monitor-state state-${item.state}`}>
                   <i aria-hidden="true" />
                   {monitorStateLabel(item)}
                 </span>
-                <small>v{item.version}</small>
               </div>
-              <h2>{item.name}</h2>
-              <p>
-                {item.monitor_type === "channel"
-                  ? item.channel_ids.join("、") || "未配置频道"
-                  : item.monitor_type === "series"
-                    ? `${item.series_title} · ${Math.max(1, item.series_scopes.length)} 个篇章 · ${
-                        item.series_scopes.length > 0
-                          ? item.series_scopes.reduce(
-                              (total, scope) =>
-                                total + scope.episode_end - scope.episode_start + 1,
-                              0
-                            )
-                          : item.episode_end - item.episode_start + 1
-                      } 集`
-                  : item.query || item.include_keywords.join("、")}
-              </p>
-              {item.last_error && (
-                <p className="monitor-error">{friendlyErrorMessage(item.last_error)}</p>
-              )}
             </div>
-            <dl className="monitor-timing">
+            {item.last_error ? (
+              <div className="prototype-monitor-error">
+                <Icon name="shield" />
+                <span><strong>最近一次检查失败</strong> — {friendlyErrorMessage(item.last_error)}</span>
+              </div>
+            ) : null}
+            {!isError ? <dl className="prototype-monitor-metrics">
               <div>
-                <dt>调度</dt>
-                <dd>
-                  {item.schedule_type === "automatic"
-                    ? `每 ${item.schedule_interval_minutes} 分钟`
-                    : "仅手动"}
-                </dd>
+                <dd>{latestRun?.discovered_count ?? 0}</dd>
+                <dt>发现新视频</dt>
               </div>
               <div>
-                <dt>最近运行</dt>
-                <dd>{item.last_run_at ? formatDateTime(item.last_run_at) : "尚未运行"}</dd>
+                <dd>{latestRun?.task_count ?? 0}</dd>
+                <dt>自动建任务</dt>
               </div>
               <div>
-                <dt>下次运行</dt>
-                <dd>{item.next_run_at ? formatDateTime(item.next_run_at) : "—"}</dd>
+                <dd>{item.next_run_at ? formatDateTime(item.next_run_at).slice(5, 16) : "—"}</dd>
+                <dt>{item.enabled ? "下次检查" : "已暂停"}</dt>
               </div>
-            </dl>
-            <div className="monitor-row-actions">
+            </dl> : null}
+            {!isError ? <div className="prototype-monitor-chips">
+              <span>{item.monitor_type === "channel" ? "频道" : item.monitor_type === "series" ? "完整剧集" : "关键词搜索"}</span>
+              {item.include_keywords.slice(0, 2).map((keyword) => <span key={keyword}>{keyword}</span>)}
+              {(item.min_duration_seconds > 0 || item.max_duration_seconds > 0) ? (
+                <span>时长 {Math.round(item.min_duration_seconds / 60)}–{Math.round(item.max_duration_seconds / 60)} 分钟</span>
+              ) : null}
+              <span>{item.auto_add_to_tasks ? "自动建任务" : "确认后建任务"}</span>
+            </div> : null}
+            <div className="monitor-row-actions prototype-monitor-actions">
               <button
-                className="button button-primary"
+                className={`button button-small ${isError ? "button-primary" : "button-secondary"}`}
                 type="button"
                 disabled={stateMutation.isPending || item.state === "running"}
                 onClick={() => stateMutation.mutate({ item, action: "run" })}
               >
-                立即执行
+                {isError ? "重试" : "立即检查"}
               </button>
+              <Link className="button button-secondary button-small" to={`/monitors/${item.id}/history`}>
+                {isError ? "查看原因" : item.enabled ? "运行记录" : "查看历史"}
+              </Link>
+              {!isError ? <Link className="button button-secondary button-small" to={`/monitors/${item.id}/edit`}>
+                编辑
+              </Link> : null}
+              <span className="prototype-monitor-action-spacer" />
               <button
-                className="button button-secondary"
+                className={item.enabled ? "text-action" : "button button-primary button-small"}
                 type="button"
                 disabled={stateMutation.isPending}
                 onClick={() =>
@@ -232,12 +259,6 @@ export default function YouTubeMonitorsPage() {
               >
                 {item.enabled ? "暂停" : "恢复"}
               </button>
-              <Link className="button button-secondary" to={`/monitors/${item.id}/history`}>
-                运行记录
-              </Link>
-              <Link className="text-action" to={`/monitors/${item.id}/edit`}>
-                编辑
-              </Link>
               <button
                 className="text-action text-danger"
                 type="button"
@@ -247,7 +268,8 @@ export default function YouTubeMonitorsPage() {
               </button>
             </div>
           </article>
-        ))}
+          );
+        })}
       </div>
 
       <ConfirmDialog

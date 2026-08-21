@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -84,13 +85,15 @@ func (s *PostgresStore) Create(ctx context.Context, newTask NewTask) error {
 		INSERT INTO tasks (
 			id, status, target_platforms, source_url, cookie_profile_id,
 			posting_strategy_id, auto_publish,
+			origin_kind, origin_monitor_id, origin_monitor_name, origin_series_title,
+			origin_series_scope_key, origin_series_scope_name, origin_episode_number,
 			repost_statement_version, repost_statement_brief, repost_statement_full,
 			original_title, title, description, thumbnail_url, extractor,
 			review_mode, review_status, review_summary, settings_version, settings_snapshot,
 			tags, category, error_retryable, version, created_at, updated_at
 		) VALUES (
-			$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-			$19,$20,$21,$22,$23,$24,$25,$26
+			$1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,'')::uuid,$10,$11,$12,$13,$14,
+			$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33
 		)
 	`,
 		task.ID,
@@ -100,6 +103,13 @@ func (s *PostgresStore) Create(ctx context.Context, newTask NewTask) error {
 		task.CookieProfileID,
 		task.PostingStrategyID,
 		task.AutoPublish,
+		task.Origin.Kind,
+		task.Origin.MonitorID,
+		task.Origin.MonitorName,
+		task.Origin.SeriesTitle,
+		task.Origin.SeriesScopeKey,
+		task.Origin.SeriesScopeName,
+		task.Origin.EpisodeNumber,
 		task.StatementVersion,
 		task.StatementBrief,
 		task.StatementFull,
@@ -196,6 +206,13 @@ const taskSelect = `
 		t.cookie_profile_id::text,
 		t.posting_strategy_id::text,
 		t.auto_publish,
+		t.origin_kind,
+		COALESCE(t.origin_monitor_id::text, ''),
+		t.origin_monitor_name,
+		t.origin_series_title,
+		t.origin_series_scope_key,
+		t.origin_series_scope_name,
+		t.origin_episode_number,
 		(
 			SELECT job.id::text
 			FROM publish_jobs job
@@ -322,6 +339,13 @@ func scanTask(row scanner) (Task, error) {
 		&task.CookieProfileID,
 		&task.PostingStrategyID,
 		&task.AutoPublish,
+		&task.Origin.Kind,
+		&task.Origin.MonitorID,
+		&task.Origin.MonitorName,
+		&task.Origin.SeriesTitle,
+		&task.Origin.SeriesScopeKey,
+		&task.Origin.SeriesScopeName,
+		&task.Origin.EpisodeNumber,
 		&task.PublishJobID,
 		&task.PublishStatus,
 		&publishBlockersJSON,
@@ -689,6 +713,58 @@ func (s *PostgresStore) SetCookieProfile(
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit task cookie profile: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) SetPostingStrategy(
+	ctx context.Context,
+	taskID string,
+	strategyID string,
+	strategySnapshot []byte,
+	now time.Time,
+) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return fmt.Errorf("begin posting strategy selection: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var status string
+	var settingsSnapshot []byte
+	if err := tx.QueryRow(ctx, `
+		SELECT status, settings_snapshot
+		FROM tasks
+		WHERE id=$1 AND archived_at IS NULL
+		FOR UPDATE
+	`, taskID).Scan(&status, &settingsSnapshot); errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("lock task posting strategy: %w", err)
+	}
+	if !slices.Contains([]string{"awaiting_manual_review", "ready_to_publish", "publishing"}, status) {
+		return &ConflictError{Code: "posting_strategy_not_editable", Message: "当前任务阶段不能更换投稿策略"}
+	}
+	settingsSnapshot, err = taskconfig.Apply(settingsSnapshot, strategySnapshot)
+	if errors.Is(err, taskconfig.ErrPresetUnavailable) {
+		return &ValidationError{Fields: map[string]string{"posting_strategy_id": "投稿策略选择的转码预设不可用"}}
+	}
+	if err != nil {
+		return fmt.Errorf("apply task posting strategy: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE tasks
+		SET posting_strategy_id=$2, settings_snapshot=$3, updated_at=$4, version=version+1
+		WHERE id=$1
+	`, taskID, strategyID, settingsSnapshot, now); err != nil {
+		return fmt.Errorf("update task posting strategy: %w", err)
+	}
+	if err := s.insertUserAudit(ctx, tx, taskID, "task.posting_strategy.selected", map[string]any{
+		"posting_strategy_id": strategyID,
+	}, now); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit posting strategy selection: %w", err)
 	}
 	return nil
 }

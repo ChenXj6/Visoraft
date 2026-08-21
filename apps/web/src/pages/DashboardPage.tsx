@@ -1,17 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import {
   EmptyState,
   LoadingBlock,
   PageHeader,
+  PlatformChips,
   QueryError,
-  TaskTrack
+  StatusBadge,
+  TaskTitle
 } from "../components";
-import { formatDateTime, formatRelativeTime } from "../format";
+import { formatRelativeTime, taskStatusForDisplay } from "../format";
 import { Icon } from "../icons";
 
 export default function DashboardPage() {
+  const queryClient = useQueryClient();
   const dashboard = useQuery({
     queryKey: ["dashboard"],
     queryFn: api.dashboard,
@@ -31,6 +34,15 @@ export default function DashboardPage() {
     queryKey: ["cookie-profiles"],
     queryFn: api.cookieProfiles,
     refetchInterval: 15_000
+  });
+  const retryTask = useMutation({
+    mutationFn: api.retryTask,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      ]);
+    }
   });
 
   const failedTasks = taskList.data?.items.filter((task) => task.status === "failed") ?? [];
@@ -57,52 +69,37 @@ export default function DashboardPage() {
     <>
       <PageHeader
         title="今天的处理队列"
-        description="先看异常和待处理项，再进入具体任务。点击任一指标即可查看对应内容。"
       />
 
-      <section
-        className={`system-pulse ${system.isError ? "system-pulse-error" : ""}`}
-        aria-live="polite"
-      >
-        <div className="pulse-title">
-          <span className="pulse-light" aria-hidden="true" />
-          <div>
-            <span>系统状态</span>
-            <strong>
-              {system.isError
-                ? "服务暂时不可用"
-                : system.isPending
-                  ? "正在读取状态"
-                  : "运行正常"}
-            </strong>
-          </div>
-        </div>
-        <dl>
-          <div className="pulse-metric">
-            <dt>服务状态</dt>
-            <dd>{system.data?.database === "ready" ? "运行正常" : "待检查"}</dd>
-            <Link className="metric-hit" to="/settings" aria-label="查看服务设置">查看</Link>
-          </div>
-          <div className="pulse-metric">
-            <dt>待发布任务</dt>
-            <dd>{system.data?.pending_outbox ?? "—"}</dd>
-            <Link className="metric-hit" to="/tasks?status=active" aria-label="查看待发布任务">查看</Link>
-          </div>
-          <div className="pulse-metric">
-            <dt>最近处理</dt>
-            <dd>
-              {system.data?.last_worker_event
-                ? formatRelativeTime(system.data.last_worker_event)
-                : "暂无"}
-            </dd>
-            <Link className="metric-hit" to="/tasks" aria-label="查看最近任务">查看</Link>
-          </div>
-          <div className="pulse-metric">
-            <dt>登录配置</dt>
-            <dd>{cookies.isPending ? "…" : readyCookies}</dd>
-            <Link className="metric-hit" to="/cookies" aria-label="查看登录配置">查看</Link>
-          </div>
-        </dl>
+      <section className="dashboard-stats" aria-label="处理队列摘要" aria-live="polite">
+        <Link className="dashboard-stat stat-primary" to="/tasks?status=active">
+          <span className="dashboard-stat-icon"><Icon name="activity" /></span>
+          <span className="dashboard-stat-copy">
+            <strong>{dashboard.data?.active ?? "—"}</strong>
+            <small>活跃任务</small>
+          </span>
+        </Link>
+        <Link className="dashboard-stat stat-danger" to="/tasks?status=failed">
+          <span className="dashboard-stat-icon"><Icon name="errorCircle" /></span>
+          <span className="dashboard-stat-copy">
+            <strong>{dashboard.data?.failed ?? "—"}</strong>
+            <small>失败需处理</small>
+          </span>
+        </Link>
+        <Link className="dashboard-stat stat-warning" to="/reviews">
+          <span className="dashboard-stat-icon"><Icon name="review" /></span>
+          <span className="dashboard-stat-copy">
+            <strong>{pipelineCounts.review}</strong>
+            <small>待复核</small>
+          </span>
+        </Link>
+        <Link className="dashboard-stat stat-success" to="/publishing">
+          <span className="dashboard-stat-icon"><Icon name="checkCircle" /></span>
+          <span className="dashboard-stat-copy">
+            <strong>{pipelineCounts.ready}</strong>
+            <small>待发布</small>
+          </span>
+        </Link>
       </section>
 
       {dashboard.isPending || taskList.isPending ? (
@@ -117,8 +114,8 @@ export default function DashboardPage() {
         <section className="pipeline-overview" aria-label="任务处理阶段汇总">
           <header>
             <div>
-              <span>实时处理流</span>
-              <strong>{dashboard.data.active} 条任务正在流转</strong>
+              <span>处理进度</span>
+              <strong>{dashboard.data.active} 条任务流转中</strong>
             </div>
             <p>
               <b>{dashboard.data.failed}</b> 条异常 · 共 {dashboard.data.total} 条任务
@@ -151,11 +148,11 @@ export default function DashboardPage() {
         <section className="work-panel queue-panel">
           <header className="work-panel-head">
             <div>
-              <p className="eyebrow">优先队列</p>
-              <h2>{failedTasks.length > 0 ? `${failedTasks.length} 条任务需要处理` : "最近任务"}</h2>
+              <h2>优先队列</h2>
+              <p className="panel-subtitle">{failedTasks.length > 0 ? `${failedTasks.length} 条任务需要处理` : "最近任务"}</p>
             </div>
             <Link className="text-link" to="/tasks">
-              查看全部任务
+              查看全部
             </Link>
           </header>
 
@@ -175,8 +172,43 @@ export default function DashboardPage() {
             />
           ) : (
             <div className="track-list">
-              {taskList.data.items.slice(0, 5).map((task) => (
-                <TaskTrack task={task} key={task.id} />
+              {taskList.data.items.slice(0, 4).map((task) => (
+                <article className="prototype-dashboard-task-row" key={task.id}>
+                  <span className="prototype-dashboard-task-thumb">
+                    {task.thumbnail_url ? <img src={task.thumbnail_url} alt="" loading="lazy" /> : null}
+                  </span>
+                  <div className="prototype-dashboard-task-main">
+                    <div className="prototype-dashboard-task-title">
+                      <strong><Link to={`/tasks/${task.id}`}><TaskTitle task={task} /></Link></strong>
+                      <StatusBadge status={taskStatusForDisplay(task)} />
+                    </div>
+                    <div className="prototype-dashboard-task-meta">
+                      <PlatformChips platforms={task.target_platforms} />
+                      <span>·</span>
+                      <span>{task.error_message || (task.paused_at ? "任务已暂停" : formatRelativeTime(task.updated_at))}</span>
+                    </div>
+                  </div>
+                  <div className="prototype-dashboard-task-action">
+                    {
+                    task.status === "failed" ? (
+                      <button
+                        className="button button-secondary button-small"
+                        type="button"
+                        disabled={retryTask.isPending && retryTask.variables === task.id}
+                        onClick={() => retryTask.mutate(task.id)}
+                      >
+                        {retryTask.isPending && retryTask.variables === task.id ? "重试中" : "重试"}
+                      </button>
+                    ) : task.status === "awaiting_manual_review" ? (
+                      <Link className="button button-text button-small" to={`/reviews/${task.id}`}>审核</Link>
+                    ) : ["published", "reconciled"].includes(task.status) ? (
+                      <Link className="button button-text button-small" to={`/tasks/${task.id}`}>查看</Link>
+                    ) : (
+                      <Link className="button button-text button-small" to={`/tasks/${task.id}`}>详情</Link>
+                    )
+                  }
+                  </div>
+                </article>
               ))}
             </div>
           )}
@@ -185,8 +217,7 @@ export default function DashboardPage() {
         <aside className="work-panel operations-panel">
           <header className="work-panel-head">
             <div>
-              <p className="eyebrow">运行状态</p>
-              <h2>本地链路</h2>
+              <h2>运行状态</h2>
             </div>
           </header>
           <ol className="operations-list">
@@ -196,7 +227,7 @@ export default function DashboardPage() {
                 <strong>任务服务</strong>
                 <p>{system.data ? "运行正常" : "等待连接"}</p>
               </div>
-              <i className={system.data ? "op-ready" : "op-wait"}>●</i>
+              <i className={system.data ? "op-status op-success" : "op-status op-wait"}>{system.data ? "正常" : "等待"}</i>
             </li>
             <li>
               <span><Icon name="route" /></span>
@@ -204,7 +235,7 @@ export default function DashboardPage() {
                 <strong>任务投递</strong>
                 <p>{system.data ? `${system.data.pending_outbox} 条等待发布` : "状态未知"}</p>
               </div>
-              <i className={system.data ? "op-ready" : "op-wait"}>●</i>
+              <i className="op-status op-count">{system.data?.pending_outbox ?? 0}</i>
             </li>
             <li>
               <span><Icon name="cookie" /></span>
@@ -214,11 +245,14 @@ export default function DashboardPage() {
               </div>
               <Link to="/cookies">{readyCookies > 0 ? "管理" : "配置"}</Link>
             </li>
+            <li>
+              <span><Icon name="history" /></span>
+              <div>
+                <strong>最近处理</strong>
+                <p>{system.data?.last_worker_event ? formatRelativeTime(system.data.last_worker_event) : "暂无记录"}</p>
+              </div>
+            </li>
           </ol>
-          <div className="operations-foot">
-            <span>最近处理时间</span>
-            <strong>{formatDateTime(system.data?.last_worker_event)}</strong>
-          </div>
         </aside>
       </div>
     </>

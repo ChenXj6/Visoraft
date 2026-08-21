@@ -4,27 +4,22 @@ const path = require("node:path");
 const { chromium } = require("playwright");
 
 const baseURL = process.env.VISORAFT_BASE_URL || "http://127.0.0.1:4173";
-const monitorID =
-  process.env.VISORAFT_AUDIT_MONITOR_ID ||
-  "899053b9-e921-4a41-a865-7867461b0e05";
 const artifactDir = path.resolve(
   __dirname,
   "../../artifacts/v1/test-runs/all-pages-responsive-audit"
 );
 
-const routes = [
-  ["dashboard", "/"],
-  ["tasks", "/tasks"],
-  ["new-task", "/tasks/new"],
-  ["reviews", "/reviews"],
-  ["publishing", "/publishing"],
-  ["publishing-settings", "/publishing/settings"],
-  ["monitors", "/monitors"],
-  ["new-monitor", "/monitors/new"],
-  ["monitor-edit", `/monitors/${monitorID}/edit`],
-  ["monitor-history", `/monitors/${monitorID}/history`],
-  ["settings", "/settings"],
-  ["cookies", "/cookies"]
+const settingsSections = [
+  "review",
+  "automation",
+  "models",
+  "subtitles",
+  "prompts",
+  "transcode",
+  "moderation",
+  "publishing",
+  "library",
+  "youtube"
 ];
 
 const viewports = [
@@ -49,6 +44,45 @@ function collectDiagnostics(page, scope, diagnostics) {
       diagnostics.push(`${scope}: HTTP ${response.status()} ${response.url()}`);
     }
   });
+}
+
+async function apiJSON(request, pathname) {
+  const response = await request.get(`${baseURL}${pathname}`);
+  assert.ok(response.ok(), `${pathname} 返回 HTTP ${response.status()}`);
+  return response.json();
+}
+
+async function resolveRoutes(request) {
+  const [taskList, monitorList] = await Promise.all([
+    apiJSON(request, "/api/v1/tasks?limit=100"),
+    apiJSON(request, "/api/v1/youtube-monitors?limit=100")
+  ]);
+  const taskID = process.env.VISORAFT_AUDIT_TASK_ID || taskList.items?.[0]?.id;
+  const monitorID =
+    process.env.VISORAFT_AUDIT_MONITOR_ID || monitorList.items?.[0]?.id;
+  assert.match(taskID || "", /^[0-9a-f-]{36}$/, "缺少可用于页面审计的任务");
+  assert.match(monitorID || "", /^[0-9a-f-]{36}$/, "缺少可用于页面审计的监控");
+  return [
+    ["dashboard", "/"],
+    ["tasks", "/tasks"],
+    ["task-detail", `/tasks/${taskID}`],
+    ["new-task", "/tasks/new"],
+    ["reviews", "/reviews"],
+    ["review-detail", `/reviews/${taskID}`],
+    ["files", "/files"],
+    ["publishing", "/publishing"],
+    ["publishing-settings", "/publishing/settings"],
+    ["publishing-detail", `/publishing/${taskID}`],
+    ["monitors", "/monitors"],
+    ["new-monitor", "/monitors/new"],
+    ["monitor-edit", `/monitors/${monitorID}/edit`],
+    ["monitor-history", `/monitors/${monitorID}/history`],
+    ["cookies", "/cookies"],
+    ...settingsSections.map((section) => [
+      `settings-${section}`,
+      `/settings?section=${section}`
+    ])
+  ];
 }
 
 async function inspect(page) {
@@ -116,6 +150,9 @@ async function main() {
   const report = [];
   const diagnostics = [];
   try {
+    const requestContext = await browser.newContext();
+    const routes = await resolveRoutes(requestContext.request);
+    await requestContext.close();
     for (const [viewportName, width, height] of viewports) {
       const context = await browser.newContext({
         viewport: { width, height },

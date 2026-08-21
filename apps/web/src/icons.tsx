@@ -10,9 +10,15 @@ export type IconName =
   | "search"
   | "menu"
   | "close"
+  | "alert"
+  | "activity"
+  | "errorCircle"
+  | "checkCircle"
   | "plus"
   | "timeRange"
   | "media"
+  | "play"
+  | "chevronDown"
   | "route"
   | "shield"
   | "sliders"
@@ -28,8 +34,13 @@ export type IconName =
   | "palette"
   | "sun"
   | "moon"
+  | "bell"
   | "help"
-  | "external";
+  | "external"
+  | "layers"
+  | "bolt"
+  | "screen"
+  | "message";
 
 const paths: Record<IconName, ReactNode> = {
   dashboard: (
@@ -78,6 +89,29 @@ const paths: Record<IconName, ReactNode> = {
   ),
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   close: <path d="m6 6 12 12M18 6 6 18" />,
+  alert: (
+    <>
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+      <path d="M12 9v4M12 17h.01" />
+    </>
+  ),
+  activity: (
+    <>
+      <path d="M3 12h4l2.2-7 4.1 14 2.2-7H21" />
+    </>
+  ),
+  errorCircle: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v6M12 17h.01" />
+    </>
+  ),
+  checkCircle: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m8 12 2.5 2.5L16.5 8" />
+    </>
+  ),
   plus: <path d="M12 5v14M5 12h14" />,
   timeRange: (
     <>
@@ -92,6 +126,8 @@ const paths: Record<IconName, ReactNode> = {
       <path d="m10 9 5 3-5 3Z" />
     </>
   ),
+  play: <path d="m8 5 11 7-11 7Z" />,
+  chevronDown: <path d="m7 10 5 5 5-5" />,
   route: (
     <>
       <circle cx="6" cy="6" r="2" />
@@ -191,6 +227,12 @@ const paths: Record<IconName, ReactNode> = {
     </>
   ),
   moon: <path d="M19.5 15.2A8 8 0 0 1 8.8 4.5 8.5 8.5 0 1 0 19.5 15.2Z" />,
+  bell: (
+    <>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+      <path d="M10 21h4" />
+    </>
+  ),
   help: (
     <>
       <circle cx="12" cy="12" r="9" />
@@ -202,7 +244,21 @@ const paths: Record<IconName, ReactNode> = {
       <path d="M14 5h5v5M19 5l-8 8" />
       <path d="M17 13v5a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 4 18V8a1.5 1.5 0 0 1 1.5-1.5h5" />
     </>
-  )
+  ),
+  layers: (
+    <>
+      <path d="m12 2 10 5-10 5L2 7Z" />
+      <path d="m2 12 10 5 10-5M2 17l10 5 10-5" />
+    </>
+  ),
+  bolt: <path d="M13 2 3 14h9l-1 8 10-12h-9Z" />,
+  screen: (
+    <>
+      <rect x="2.5" y="3.5" width="19" height="14" rx="2" />
+      <path d="M8 21h8M12 17.5V21M2.5 7.5h19" />
+    </>
+  ),
+  message: <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
 };
 
 export function Icon({

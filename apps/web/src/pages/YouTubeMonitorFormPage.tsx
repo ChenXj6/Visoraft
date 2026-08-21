@@ -417,7 +417,7 @@ export default function YouTubeMonitorFormPage() {
                 save.mutate();
               }}
             >
-              {save.isPending ? "正在保存…" : editing ? "保存新版本" : "创建监控"}
+              {save.isPending ? "正在保存…" : editing ? "保存配置" : "创建监控"}
             </button>
           </div>
         }

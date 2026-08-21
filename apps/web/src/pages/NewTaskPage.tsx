@@ -5,7 +5,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { api, ApiError, type CreateTaskInput, type Platform } from "../api";
 import { PageHeader } from "../components";
-import { Icon } from "../icons";
 
 const formSchema = z.object({
   source_url: z.url("请输入有效的视频 URL"),
@@ -22,6 +21,7 @@ export default function NewTaskPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [submitError, setSubmitError] = useState("");
+  const [step, setStep] = useState(1);
   const cookies = useQuery({
     queryKey: ["cookie-profiles"],
     queryFn: api.cookieProfiles
@@ -49,6 +49,7 @@ export default function NewTaskPage() {
   });
 
   const sourceURL = watch("source_url");
+  const targetPlatforms = watch("target_platforms");
   const statementVersion = watch("repost_statement_version");
   const postingStrategyID = watch("posting_strategy_id");
   const autoPublish = watch("auto_publish");
@@ -122,24 +123,36 @@ export default function NewTaskPage() {
     <>
       <PageHeader
         title="把视频送入处理轨道"
-        description="填写执行所需信息即可。任务不再采集或展示来源权利记录。"
-        actions={
-          <Link to="/tasks" className="button button-secondary">
-            返回任务
-          </Link>
-        }
       />
 
       <form className="new-task-workbench" onSubmit={onSubmit} noValidate>
+        <ol className="new-task-steps" aria-label="新建任务步骤">
+          {["视频来源", "发布目标", "投稿策略", "确认创建"].map((label, index) => {
+            const number = index + 1;
+            return (
+              <li className={number === step ? "is-active" : number < step ? "is-done" : ""} key={label}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep(number);
+                    document.getElementById(`new-task-step-${number}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                >
+                  <span>{number < step ? "✓" : number}</span>
+                  <strong>{label}</strong>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
         <div className="new-task-main">
-          <section className="work-panel ingest-section">
-            <header className="section-heading">
-              <span className="sequence-mark"><Icon name="media" /></span>
+          <section id="new-task-step-1" className="work-panel ingest-section wizard-step-panel">
+            <header className="section-heading prototype-numbered-heading">
               <div>
-                <p className="eyebrow">视频来源</p>
-                <h2>视频地址</h2>
-              <p>粘贴常见视频页面或媒体直链；一次任务处理一条视频。</p>
+                <h2>① 视频地址</h2>
+                <p>粘贴常见视频页面或媒体直链；一次任务处理一条视频。</p>
               </div>
+              {sourceURL ? <span className="settings-cat-status status-ok">已填写</span> : null}
             </header>
             <label className="field field-prominent">
               <span>视频 URL</span>
@@ -151,126 +164,35 @@ export default function NewTaskPage() {
                 {...register("source_url")}
                 aria-invalid={Boolean(errors.source_url)}
               />
+              <small className="field-help">支持 YouTube 视频页面链接或媒体直链</small>
               {errors.source_url && (
                 <small className="field-error">{errors.source_url.message}</small>
               )}
             </label>
           </section>
 
-          <section className="work-panel ingest-section">
-            <header className="section-heading">
-              <span className="sequence-mark"><Icon name="sliders" /></span>
+          <section id="new-task-step-2" className="work-panel ingest-section wizard-step-panel">
+            <header className="section-heading prototype-numbered-heading">
               <div>
-                <p className="eyebrow">处理与投稿</p>
-                <h2>投稿策略与自动化</h2>
-                <p>策略会连同账号、分区、转码预设和审核要求冻结到本任务中。</p>
-              </div>
-            </header>
-            <div className="settings-form-grid">
-              <label className="field">
-                <span>投稿策略（可选）</span>
-                <select
-                  {...register("posting_strategy_id", {
-                    onChange: (event) => {
-                      const strategy = usableStrategies.find(
-                        (item) => item.id === event.target.value
-                      );
-                      if (!strategy) {
-                        setValue("auto_publish", false);
-                        return;
-                      }
-                      setValue("target_platforms", strategy.target_platforms, {
-                        shouldValidate: true
-                      });
-                      setValue(
-                        "repost_statement_version",
-                        strategy.repost_statement_version
-                      );
-                      if (strategy.automation_mode !== "automatic_after_review") {
-                        setValue("auto_publish", false);
-                      }
-                    }
-                  })}
-                  disabled={strategies.isPending}
-                >
-                  <option value="">不使用策略，审核后人工配置投稿</option>
-                  {usableStrategies.map((strategy) => (
-                    <option value={strategy.id} key={strategy.id}>
-                      {strategy.name} ·{" "}
-                      {strategy.automation_mode === "automatic_after_review"
-                        ? "审核后自动投稿"
-                        : "审核后人工确认"}
-                    </option>
-                  ))}
-                </select>
-                <small className="field-help">
-                  {strategies.isError
-                    ? "投稿策略暂时无法读取。"
-                    : usableStrategies.length === 0
-                      ? "还没有可用策略，可先到投稿配置创建。"
-                      : selectedStrategy
-                        ? `目标：${selectedStrategy.target_platforms.join("、")}；${
-                            selectedStrategy.require_content_moderation
-                              ? "要求内容安全审核"
-                              : "不强制内容安全审核"
-                          }`
-                        : "不选策略时，审核通过后会进入投稿工作台人工补齐。"}
-                  <Link to="/settings?section=publishing"> 管理投稿配置</Link>
-                </small>
-                {errors.posting_strategy_id && (
-                  <small className="field-error">
-                    {errors.posting_strategy_id.message}
-                  </small>
-                )}
-              </label>
-
-              <label className="check-card">
-                <input
-                  type="checkbox"
-                  {...register("auto_publish")}
-                  disabled={
-                    !selectedStrategy ||
-                    selectedStrategy.automation_mode !== "automatic_after_review"
-                  }
-                />
-                <span aria-hidden="true" />
-                <div>
-                  <strong>审核通过后自动投稿</strong>
-                  <small>
-                    仅“审核后自动投稿”策略可开启；自动审核和人工审核通过后都走同一可靠发布队列。
-                  </small>
-                </div>
-              </label>
-              {errors.auto_publish && (
-                <small className="field-error">{errors.auto_publish.message}</small>
-              )}
-            </div>
-          </section>
-
-          <section className="work-panel ingest-section">
-            <header className="section-heading">
-              <span className="sequence-mark"><Icon name="route" /></span>
-              <div>
-                <p className="eyebrow">发布路径</p>
-                <h2>发布目标</h2>
-                <p>这里只决定任务后续进入哪些平台流程，不会立即发布。</p>
+                <h2>② 发布目标</h2>
+                <p>选择要投稿到的平台。这里只决定后续进入哪些平台流程，不会立即发布。</p>
               </div>
             </header>
             <fieldset className="field">
-              <legend>目标平台</legend>
+              <legend className="visually-hidden">目标平台</legend>
               <div className="platform-choices">
-                <label>
+                <label className={`platform-choice ${targetPlatforms.includes("acfun") ? "selected" : ""}`}>
                   <input type="checkbox" value="acfun" {...register("target_platforms")} />
-                  <span className="platform-choice-code">AC</span>
-                  <span>
+                  <span className="platform-choice-code ac">AC</span>
+                  <span className="platform-choice-info">
                     <strong>AcFun</strong>
                     <small>进入 AcFun 发布轨道</small>
                   </span>
                 </label>
-                <label>
+                <label className={`platform-choice ${targetPlatforms.includes("bilibili") ? "selected" : ""}`}>
                   <input type="checkbox" value="bilibili" {...register("target_platforms")} />
-                  <span className="platform-choice-code">BI</span>
-                  <span>
+                  <span className="platform-choice-code bi">BI</span>
+                  <span className="platform-choice-info">
                     <strong>Bilibili</strong>
                     <small>进入 Bilibili 发布轨道</small>
                   </span>
@@ -282,45 +204,88 @@ export default function NewTaskPage() {
             </fieldset>
           </section>
 
-          <section className="work-panel ingest-section">
-            <header className="section-heading">
-              <span className="sequence-mark"><Icon name="shield" /></span>
+          <section id="new-task-step-3" className="work-panel ingest-section wizard-step-panel">
+            <header className="section-heading prototype-numbered-heading">
               <div>
-                <p className="eyebrow">登录凭据</p>
-                <h2>登录 Cookie</h2>
-                <p>公开视频可以不选；需要登录或触发机器人验证时选择已同步配置。</p>
+                <h2>③ 投稿策略与自动化</h2>
+                <p>策略会连同账号、分区、转码预设和审核要求冻结到本任务中。</p>
               </div>
             </header>
-            <label className="field">
-              <span>Cookie 配置（可选）</span>
-              <select {...register("cookie_profile_id")} disabled={cookies.isPending}>
-                <option value="">不使用 Cookie</option>
-                {usableCookies.map((profile) => (
-                  <option value={profile.id} key={profile.id}>
-                    {profile.name} · {profile.cookie_count} 条
-                  </option>
-                ))}
-              </select>
-              <small className="field-help">
-                {cookies.isError
-                  ? "Cookie 配置暂时无法读取。"
-                  : usableCookies.length === 0
-                    ? "还没有可用配置。"
-                      : "处理任务时临时取用，登录信息不会写入普通任务记录。"}
-                <Link to="/cookies"> 管理 Cookie</Link>
-              </small>
-              {errors.cookie_profile_id && (
-                <small className="field-error">{errors.cookie_profile_id.message}</small>
-              )}
-            </label>
+            <div className="settings-form-grid">
+              <label className="field">
+                <span>投稿策略（可选）</span>
+                <select
+                  {...register("posting_strategy_id", {
+                    onChange: (event) => {
+                      const strategy = usableStrategies.find((item) => item.id === event.target.value);
+                      if (!strategy) {
+                        setValue("auto_publish", false);
+                        return;
+                      }
+                      setValue("target_platforms", strategy.target_platforms, { shouldValidate: true });
+                      setValue("repost_statement_version", strategy.repost_statement_version);
+                      if (strategy.automation_mode !== "automatic_after_review") setValue("auto_publish", false);
+                    }
+                  })}
+                  disabled={strategies.isPending}
+                >
+                  <option value="">不使用策略，审核后人工配置投稿</option>
+                  {usableStrategies.map((strategy) => (
+                    <option value={strategy.id} key={strategy.id}>
+                      {strategy.name} · {strategy.automation_mode === "automatic_after_review" ? "审核后自动投稿" : "审核后人工确认"}
+                    </option>
+                  ))}
+                </select>
+                <small className="field-help">
+                  {strategies.isError
+                    ? "投稿策略暂时无法读取。"
+                    : usableStrategies.length === 0
+                      ? "还没有可用策略，可先到投稿配置创建。"
+                      : selectedStrategy
+                        ? `目标：${selectedStrategy.target_platforms.join("、")}；${selectedStrategy.require_content_moderation ? "要求内容安全审核" : "不强制内容安全审核"}`
+                        : "不选策略时，审核通过后会进入投稿工作台人工补齐。"}
+                  <Link to="/settings?section=publishing"> 管理投稿配置</Link>
+                </small>
+                {errors.posting_strategy_id && <small className="field-error">{errors.posting_strategy_id.message}</small>}
+              </label>
+
+              <label className="field">
+                <span>登录 Cookie（可选）</span>
+                <select {...register("cookie_profile_id")} disabled={cookies.isPending}>
+                  <option value="">不使用 Cookie</option>
+                  {usableCookies.map((profile) => (
+                    <option value={profile.id} key={profile.id}>{profile.name} · {profile.cookie_count} 条</option>
+                  ))}
+                </select>
+                <small className="field-help">
+                  {cookies.isError ? "Cookie 配置暂时无法读取。" : usableCookies.length === 0 ? "还没有可用配置。" : "公开视频可以不选。"}
+                  <Link to="/cookies"> 管理 Cookie</Link>
+                </small>
+                {errors.cookie_profile_id && <small className="field-error">{errors.cookie_profile_id.message}</small>}
+              </label>
+
+              <label className="check-card prototype-auto-publish-card">
+                <input
+                  type="checkbox"
+                  {...register("auto_publish")}
+                  disabled={!selectedStrategy || selectedStrategy.automation_mode !== "automatic_after_review"}
+                />
+                <span aria-hidden="true" />
+                <div>
+                  <strong>审核通过后自动投稿</strong>
+                  <small>仅“审核后自动投稿”策略可开启；自动审核和人工审核通过后都走同一可靠发布队列。</small>
+                </div>
+              </label>
+              {errors.auto_publish && <small className="field-error">{errors.auto_publish.message}</small>}
+            </div>
           </section>
+
         </div>
 
         <aside className="new-task-side">
           <section className="work-panel statement-editor">
             <header className="section-heading section-heading-compact">
               <div>
-                <p className="eyebrow">发布备注</p>
                 <h2>自动转载声明</h2>
               </div>
             </header>
@@ -351,7 +316,7 @@ export default function NewTaskPage() {
             </p>
           </section>
 
-          <section className="submit-console">
+          <section id="new-task-step-4" className="submit-console">
             <dl>
               <div>
                 <dt>入队方式</dt>
@@ -382,6 +347,7 @@ export default function NewTaskPage() {
           <p>提交后任务会安全保存并进入处理队列，关闭页面也不会丢失。</p>
           </section>
         </aside>
+
       </form>
     </>
   );

@@ -8,6 +8,7 @@ import {
   type PlatformAccount,
   type PlatformCategory,
   type PlatformPublication,
+  type PostingStrategy,
   type PublishingDetail
 } from "../api";
 import {
@@ -110,6 +111,13 @@ function humanNextAction(value: string) {
       description: "发布状态已持久化，可返回任务详情继续追踪。"
     }
   );
+}
+
+function blockerRoute(action: string, taskId: string) {
+  if (["select_posting_strategy", "enable_posting_strategy", "edit_posting_strategy", "bind_platform_account", "check_platform_account", "bind_real_platform_account", "select_platform_category"].includes(action)) return "/publishing/settings";
+  if (["run_transcode", "retry_media_processing", "prepare_cover"].includes(action)) return `/tasks/${taskId}`;
+  if (action === "run_content_moderation") return "/settings?section=moderation";
+  return `/tasks/${taskId}`;
 }
 
 function isFixtureSource(sourceURL: string) {
@@ -389,6 +397,7 @@ export default function PublishingPage() {
   const { taskId = "" } = useParams();
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState("");
+  const [selectedStrategyID, setSelectedStrategyID] = useState("");
 
   const task = useQuery({
     queryKey: ["task", taskId],
@@ -416,6 +425,10 @@ export default function PublishingPage() {
       return { items: [...acfun.items, ...bilibili.items] };
     }
   });
+  const strategies = useQuery({
+    queryKey: ["posting-strategies"],
+    queryFn: api.postingStrategies,
+  });
 
   const refresh = async (detail: PublishingDetail, message: string) => {
     queryClient.setQueryData(["publishing", taskId], detail);
@@ -423,7 +436,8 @@ export default function PublishingPage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["task", taskId] }),
       queryClient.invalidateQueries({ queryKey: ["tasks"] }),
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["publishing-queue"] })
     ]);
   };
 
@@ -440,6 +454,22 @@ export default function PublishingPage() {
     onError: (error) =>
       setNotice(messageOf(error, "暂时无法加入发布队列"))
   });
+  const assignStrategy = useMutation({
+    mutationFn: async (strategyID: string) => {
+      const updatedTask = await api.setTaskPostingStrategy(taskId, strategyID);
+      queryClient.setQueryData(["task", taskId], updatedTask);
+      return api.preparePublishing(taskId);
+    },
+    onSuccess: (detail) => refresh(detail, "投稿策略已应用，发布条件已重新检查。"),
+    onError: (error) => setNotice(messageOf(error, "投稿策略应用失败")),
+  });
+
+  useEffect(() => {
+    if (selectedStrategyID) return;
+    const enabled = (strategies.data?.items ?? []).filter((item) => item.enabled);
+    const preferred = enabled.find((item) => item.id === task.data?.posting_strategy_id) ?? enabled[0];
+    if (preferred) setSelectedStrategyID(preferred.id);
+  }, [selectedStrategyID, strategies.data?.items, task.data?.posting_strategy_id]);
 
   const accountByPlatform = useMemo(() => {
     const grouped: Record<Platform, PlatformAccount[]> = {
@@ -518,7 +548,9 @@ export default function PublishingPage() {
     detail.publications.some((item) =>
       ["draft", "failed"].includes(item.status)
     );
-  const busy = prepare.isPending || enqueue.isPending;
+  const busy = prepare.isPending || enqueue.isPending || assignStrategy.isPending;
+  const needsStrategy = detail.blockers.some((blocker) => blocker.action === "select_posting_strategy" || blocker.code === "posting_strategy_missing");
+  const usableStrategies = (strategies.data?.items ?? []).filter((strategy: PostingStrategy) => strategy.enabled && task.data!.target_platforms.every((platform) => strategy.target_platforms.includes(platform)));
 
   return (
     <>
@@ -572,6 +604,11 @@ export default function PublishingPage() {
               {enqueue.isPending ? "正在入队…" : "确认并加入发布队列"}
             </button>
           )}
+          {detail.job && detail.blockers.length > 0 ? (
+            <button className="button button-secondary" type="button" disabled={busy} onClick={() => prepare.mutate()}>
+              {prepare.isPending ? "正在检查…" : "重新检查发布条件"}
+            </button>
+          ) : null}
           <Link className="button button-secondary" to="/publishing/settings">
             账号与策略
           </Link>
@@ -587,6 +624,21 @@ export default function PublishingPage() {
             <h2 id="publishing-blockers-title">还不能发布</h2>
             <p>以下项目全部解决后，入队按钮才会启用。</p>
           </header>
+          {needsStrategy ? (
+            <div className="publishing-strategy-picker">
+              <label className="field">
+                <span>为当前任务选择投稿策略</span>
+                <select value={selectedStrategyID} disabled={assignStrategy.isPending} onChange={(event) => setSelectedStrategyID(event.target.value)}>
+                  <option value="">请选择可用策略</option>
+                  {usableStrategies.map((strategy) => <option key={strategy.id} value={strategy.id}>{strategy.name} · {strategy.automation_mode === "automatic_after_review" ? "审核后自动" : "审核后手动"}</option>)}
+                </select>
+              </label>
+              <button className="button button-primary" type="button" disabled={!selectedStrategyID || assignStrategy.isPending} onClick={() => assignStrategy.mutate(selectedStrategyID)}>
+                {assignStrategy.isPending ? "正在应用…" : "应用策略并重新检查"}
+              </button>
+              {usableStrategies.length === 0 ? <Link className="button button-secondary" to="/publishing/settings">新建可用策略</Link> : null}
+            </div>
+          ) : null}
           <ul>
             {detail.blockers.map((blocker, index) => (
               <li key={`${blocker.code}-${blocker.platform ?? "all"}-${index}`}>
@@ -596,7 +648,7 @@ export default function PublishingPage() {
                     : ""}
                   {blocker.message}
                 </strong>
-                <span>{blockerActionLabels[blocker.action] ?? "处理当前阻塞项"}</span>
+                <Link className="publishing-blocker-action" to={blockerRoute(blocker.action, taskId)}>{blockerActionLabels[blocker.action] ?? "处理当前阻塞项"}</Link>
               </li>
             ))}
           </ul>

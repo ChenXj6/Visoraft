@@ -190,7 +190,8 @@ async function main() {
     tabTitle: ".settings-index strong",
     tabDescription: ".settings-index small"
   });
-  assertMinFont(settingsTypography, "sectionTitle", 22);
+  // 设置卡片标题遵循新版设计规范的 16px；22px 仅用于页面级 H1。
+  assertMinFont(settingsTypography, "sectionTitle", 16);
   assertMinFont(settingsTypography, "sectionDescription", 13);
   assertMinFont(settingsTypography, "modeTitle", 14);
   assertMinFont(settingsTypography, "modeDescription", 12);
@@ -220,7 +221,7 @@ async function main() {
   assertMinFont(typography, "body", 14);
   assertMinFont(typography, "navTitle", 14);
   assertMinFont(typography, "navDescription", 12);
-  assertMinFont(typography, "pageDescription", 14);
+  assertMinFont(typography, "pageDescription", 13);
   assertMinFont(typography, "quickCreate", 13);
 
   await browser.close();

@@ -259,6 +259,15 @@ func (s *Service) enqueueItem(
 		RepostStatementVersion: monitor.TaskTemplate.RepostStatementVersion,
 		PostingStrategyID:      monitor.TaskTemplate.PostingStrategyID,
 		AutoPublish:            monitor.TaskTemplate.AutoPublish,
+		Origin: &tasks.TaskOrigin{
+			Kind:            "monitor",
+			MonitorID:       monitor.ID,
+			MonitorName:     monitor.Name,
+			SeriesTitle:     monitor.SeriesTitle,
+			SeriesScopeKey:  item.SeriesScopeKey,
+			SeriesScopeName: item.SeriesScopeName,
+			EpisodeNumber:   item.EpisodeNumber,
+		},
 	})
 	if err != nil {
 		_ = s.store.ReleaseIngestion(ctx, item.ExternalVideoID)

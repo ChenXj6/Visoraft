@@ -16,6 +16,7 @@ import (
 	"github.com/visoraft/visoraft/internal/database"
 	"github.com/visoraft/visoraft/internal/httpapi"
 	"github.com/visoraft/visoraft/internal/logging"
+	"github.com/visoraft/visoraft/internal/medialibrary"
 	"github.com/visoraft/visoraft/internal/monitors"
 	"github.com/visoraft/visoraft/internal/objectstorage"
 	"github.com/visoraft/visoraft/internal/publishing"
@@ -76,6 +77,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	libraryService := medialibrary.NewService(
+		pool,
+		objectStorage,
+		cfg.LibraryRoot,
+		cfg.LibraryHostPath,
+		logger,
+	)
+	go libraryService.Run(ctx, 5*time.Second)
 	publishStore := publishing.NewPostgresStore(pool)
 	publishService := publishing.NewService(
 		publishStore,
@@ -101,6 +110,7 @@ func run() error {
 		monitorService,
 		publishService,
 		objectStorage,
+		libraryService,
 		pool,
 		logger,
 		buildinfo.Version,

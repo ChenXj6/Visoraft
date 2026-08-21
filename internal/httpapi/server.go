@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/visoraft/visoraft/internal/cookieprofiles"
 	"github.com/visoraft/visoraft/internal/identity"
+	"github.com/visoraft/visoraft/internal/medialibrary"
 	"github.com/visoraft/visoraft/internal/moderation"
 	"github.com/visoraft/visoraft/internal/monitors"
 	"github.com/visoraft/visoraft/internal/objectstorage"
@@ -36,6 +37,7 @@ type Server struct {
 	monitorService  *monitors.Service
 	publishService  *publishing.Service
 	objectStorage   *objectstorage.Client
+	libraryService  *medialibrary.Service
 	pool            *pgxpool.Pool
 	logger          *slog.Logger
 	startedAt       time.Time
@@ -62,6 +64,7 @@ func NewServer(
 	monitorService *monitors.Service,
 	publishService *publishing.Service,
 	objectStorage *objectstorage.Client,
+	libraryService *medialibrary.Service,
 	pool *pgxpool.Pool,
 	logger *slog.Logger,
 	version string,
@@ -75,6 +78,7 @@ func NewServer(
 		monitorService:  monitorService,
 		publishService:  publishService,
 		objectStorage:   objectStorage,
+		libraryService:  libraryService,
 		pool:            pool,
 		logger:          logger,
 		startedAt:       time.Now().UTC(),
@@ -88,6 +92,10 @@ func NewServer(
 	mux.HandleFunc("GET /api/v1/system/status", server.systemStatus)
 	mux.HandleFunc("GET /api/v1/dashboard", server.dashboard)
 	mux.HandleFunc("GET /api/v1/files", server.fileLibrary)
+	mux.HandleFunc("GET /api/v1/library/settings", server.getLibrarySettings)
+	mux.HandleFunc("PUT /api/v1/library/settings", server.updateLibrarySettings)
+	mux.HandleFunc("POST /api/v1/files/{assetID}/sync", server.syncLocalFile)
+	mux.HandleFunc("DELETE /api/v1/files/{assetID}/local", server.deleteLocalFile)
 	mux.HandleFunc("GET /api/v1/tasks", server.listTasks)
 	mux.HandleFunc("POST /api/v1/tasks", server.createTask)
 	mux.HandleFunc("POST /api/v1/tasks/bulk-retry", server.bulkRetryTasks)
@@ -106,6 +114,7 @@ func NewServer(
 	mux.HandleFunc("POST /api/v1/tasks/{taskID}/restore", server.restoreTask)
 	mux.HandleFunc("DELETE /api/v1/tasks/{taskID}", server.purgeTask)
 	mux.HandleFunc("PUT /api/v1/tasks/{taskID}/cookie-profile", server.setTaskCookieProfile)
+	mux.HandleFunc("PUT /api/v1/tasks/{taskID}/posting-strategy", server.setTaskPostingStrategy)
 	mux.HandleFunc("DELETE /api/v1/tasks/{taskID}/assets", server.deleteTaskAssets)
 	mux.HandleFunc("GET /api/v1/cookie-profiles", server.listCookieProfiles)
 	mux.HandleFunc("POST /api/v1/cookie-profiles/upload", server.uploadCookieProfile)
@@ -249,13 +258,80 @@ func (s *Server) dashboard(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (s *Server) fileLibrary(writer http.ResponseWriter, request *http.Request) {
-	library, err := s.service.FileLibrary(request.Context())
+	library, err := s.libraryService.Library(request.Context())
 	if err != nil {
 		s.logger.Error("file library query failed", "error", err)
 		writeProblem(writer, http.StatusInternalServerError, "file_library_failed", "无法加载文件中心", nil)
 		return
 	}
 	writeJSON(writer, http.StatusOK, library)
+}
+
+func (s *Server) getLibrarySettings(writer http.ResponseWriter, request *http.Request) {
+	settings, err := s.libraryService.Settings(request.Context())
+	if err != nil {
+		s.logger.Error("local library settings query failed", "error", err)
+		writeProblem(writer, http.StatusInternalServerError, "library_settings_failed", "无法读取本地媒体库设置", nil)
+		return
+	}
+	writeJSON(writer, http.StatusOK, settings)
+}
+
+func (s *Server) updateLibrarySettings(writer http.ResponseWriter, request *http.Request) {
+	var input medialibrary.UpdateSettingsInput
+	if err := decodeJSON(writer, request, &input); err != nil {
+		writeProblem(writer, http.StatusBadRequest, "invalid_json", err.Error(), nil)
+		return
+	}
+	settings, err := s.libraryService.UpdateSettings(request.Context(), input)
+	if s.writeLibraryError(writer, request, err) {
+		return
+	}
+	writeJSON(writer, http.StatusOK, settings)
+}
+
+func (s *Server) syncLocalFile(writer http.ResponseWriter, request *http.Request) {
+	assetID := request.PathValue("assetID")
+	if !identity.IsUUID(assetID) {
+		writeProblem(writer, http.StatusBadRequest, "invalid_asset_id", "文件 ID 格式无效", nil)
+		return
+	}
+	asset, err := s.libraryService.Sync(request.Context(), assetID)
+	if s.writeLibraryError(writer, request, err) {
+		return
+	}
+	writeJSON(writer, http.StatusAccepted, asset)
+}
+
+func (s *Server) deleteLocalFile(writer http.ResponseWriter, request *http.Request) {
+	assetID := request.PathValue("assetID")
+	if !identity.IsUUID(assetID) {
+		writeProblem(writer, http.StatusBadRequest, "invalid_asset_id", "文件 ID 格式无效", nil)
+		return
+	}
+	if err := s.libraryService.Remove(request.Context(), assetID); s.writeLibraryError(writer, request, err) {
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) writeLibraryError(writer http.ResponseWriter, request *http.Request, err error) bool {
+	if err == nil {
+		return false
+	}
+	var validation *medialibrary.ValidationError
+	if errors.As(err, &validation) {
+		writeProblem(writer, http.StatusUnprocessableEntity, "validation_failed", "请检查本地媒体库设置", validation.Fields)
+		return true
+	}
+	var conflict *medialibrary.ConflictError
+	if errors.As(err, &conflict) {
+		writeProblem(writer, http.StatusConflict, conflict.Code, conflict.Message, nil)
+		return true
+	}
+	s.logger.Error("local library action failed", "path", request.URL.Path, "error", err)
+	writeProblem(writer, http.StatusInternalServerError, "local_library_action_failed", "本地媒体库操作失败", nil)
+	return true
 }
 
 func (s *Server) listTasks(writer http.ResponseWriter, request *http.Request) {
@@ -370,6 +446,26 @@ func (s *Server) setTaskCookieProfile(writer http.ResponseWriter, request *http.
 		"task_cookie_profile_failed",
 		"Cookie 配置更新失败",
 	) {
+		return
+	}
+	writeJSON(writer, http.StatusOK, task)
+}
+
+func (s *Server) setTaskPostingStrategy(writer http.ResponseWriter, request *http.Request) {
+	var input struct {
+		PostingStrategyID string `json:"posting_strategy_id"`
+	}
+	if err := decodeJSON(writer, request, &input); err != nil {
+		writeProblem(writer, http.StatusBadRequest, "invalid_json", err.Error(), nil)
+		return
+	}
+	task, err := s.service.SetPostingStrategy(request.Context(), request.PathValue("taskID"), input.PostingStrategyID)
+	var validationError *tasks.ValidationError
+	if errors.As(err, &validationError) {
+		writeProblem(writer, http.StatusUnprocessableEntity, "validation_failed", "请选择可用于该任务的投稿策略", validationError.Fields)
+		return
+	}
+	if s.writeTaskActionError(writer, request, err, "task_posting_strategy_failed", "投稿策略更新失败") {
 		return
 	}
 	writeJSON(writer, http.StatusOK, task)

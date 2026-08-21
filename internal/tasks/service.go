@@ -55,6 +55,7 @@ type Store interface {
 	CookieProfileExists(context.Context, string) (bool, error)
 	PostingStrategy(context.Context, string) (PostingStrategyReference, error)
 	SetCookieProfile(context.Context, string, *string, time.Time) error
+	SetPostingStrategy(context.Context, string, string, []byte, time.Time) error
 	Pause(context.Context, string, time.Time) error
 	Resume(context.Context, string, time.Time) error
 	Cancel(context.Context, string, time.Time) error
@@ -72,6 +73,38 @@ type Service struct {
 
 func NewService(store Store) *Service {
 	return &Service{store: store, now: time.Now}
+}
+
+func (s *Service) SetPostingStrategy(ctx context.Context, taskID, strategyID string) (Task, error) {
+	if !identity.IsUUID(taskID) || !identity.IsUUID(strategyID) {
+		return Task{}, ErrInvalidID
+	}
+	task, err := s.store.Get(ctx, taskID)
+	if err != nil {
+		return Task{}, err
+	}
+	strategy, err := s.store.PostingStrategy(ctx, strategyID)
+	if err != nil {
+		return Task{}, err
+	}
+	if strategy.ID == "" || !strategy.Enabled {
+		return Task{}, &ValidationError{Fields: map[string]string{"posting_strategy_id": "投稿策略不存在或已停用"}}
+	}
+	for _, platform := range task.TargetPlatforms {
+		if !slices.Contains(strategy.TargetPlatforms, platform) {
+			return Task{}, &ValidationError{Fields: map[string]string{"posting_strategy_id": "投稿策略没有覆盖任务的全部目标平台"}}
+		}
+	}
+	if task.AutoPublish && strategy.AutomationMode != "automatic_after_review" {
+		return Task{}, &ValidationError{Fields: map[string]string{"posting_strategy_id": "全自动任务必须选择审核后自动投稿策略"}}
+	}
+	if _, err := taskconfig.DecodeStrategy(strategy.Snapshot); err != nil {
+		return Task{}, fmt.Errorf("decode selected posting strategy: %w", err)
+	}
+	if err := s.store.SetPostingStrategy(ctx, taskID, strategyID, strategy.Snapshot, s.now().UTC()); err != nil {
+		return Task{}, err
+	}
+	return s.store.Get(ctx, taskID)
 }
 
 func (s *Service) Create(ctx context.Context, input CreateInput) (Task, error) {
@@ -209,6 +242,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Task, error) {
 		CookieProfileID:   normalized.CookieProfileID,
 		PostingStrategyID: normalized.PostingStrategyID,
 		AutoPublish:       normalized.AutoPublish,
+		Origin:            TaskOrigin{Kind: "manual"},
 		StatementVersion:  normalized.RepostStatementVersion,
 		StatementBrief:    brief,
 		StatementFull:     full,
@@ -227,6 +261,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Task, error) {
 			Progress:  0,
 			UpdatedAt: now,
 		}},
+	}
+	if normalized.Origin != nil {
+		task.Origin = *normalized.Origin
 	}
 
 	envelope, err := events.New(
@@ -654,6 +691,22 @@ func validateAndNormalize(input CreateInput, _ time.Time) (CreateInput, error) {
 	}
 	if input.AutoPublish && input.PostingStrategyID == nil {
 		issues["auto_publish"] = "开启全自动投稿前必须选择投稿策略"
+	}
+	if input.Origin != nil {
+		origin := *input.Origin
+		origin.Kind = strings.ToLower(strings.TrimSpace(origin.Kind))
+		origin.MonitorID = strings.TrimSpace(origin.MonitorID)
+		origin.MonitorName = strings.TrimSpace(origin.MonitorName)
+		origin.SeriesTitle = strings.TrimSpace(origin.SeriesTitle)
+		origin.SeriesScopeKey = strings.TrimSpace(origin.SeriesScopeKey)
+		origin.SeriesScopeName = strings.TrimSpace(origin.SeriesScopeName)
+		if origin.Kind != "monitor" || !identity.IsUUID(origin.MonitorID) {
+			issues["origin"] = "监控任务来源信息无效"
+		}
+		if origin.EpisodeNumber < 0 {
+			issues["origin_episode_number"] = "剧集编号不能小于 0"
+		}
+		input.Origin = &origin
 	}
 
 	parsedURL, err := url.ParseRequestURI(input.SourceURL)

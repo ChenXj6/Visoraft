@@ -11,13 +11,14 @@ const artifactDir = path.resolve(
 
 const settingsSections = [
   "review",
-  "pipeline",
+  "automation",
   "models",
   "subtitles",
   "prompts",
   "transcode",
   "moderation",
   "publishing",
+  "library",
   "youtube"
 ];
 
@@ -208,7 +209,11 @@ async function main() {
           timeout: 30_000
         });
         assert.ok(response?.ok(), `${scope}: 页面返回 HTTP ${response?.status()}`);
-        await page.locator("main h1").first().waitFor({ timeout: 15_000 });
+        try {
+          await page.locator("main h1").first().waitFor({ timeout: 15_000 });
+        } catch (error) {
+          throw new Error(`${scope}: 等待页面主标题失败`, { cause: error });
+        }
         await page.waitForTimeout(250);
 
         if (!themeSwitched) {
@@ -217,14 +222,13 @@ async function main() {
             "light",
             `${scope}: 切换前的浅色主题未生效`
           );
-          await page.locator(".theme-control > summary").click();
-          await page.locator(".theme-options button").nth(1).click();
+          await page.getByRole("button", { name: "切换到暗色模式" }).click();
           await page.waitForFunction(
             () =>
               document.documentElement.dataset.theme === "dark" &&
               localStorage.getItem("visoraft-theme") === "dark"
           );
-          await page.locator(".theme-control > summary").click();
+          await page.waitForTimeout(250);
           themeSwitched = true;
         }
 
@@ -314,19 +318,22 @@ async function main() {
       });
       await page.keyboard.press("Escape");
 
-      await page.locator(".theme-control > summary").click();
-      const themePopover = await inspect(page);
-      assert.equal(themePopover.theme, "dark", `${viewportName} theme-popover: 深色主题未保持`);
+      await page.getByRole("button", { name: "切换到亮色模式" }).click();
+      await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+      await page.getByRole("button", { name: "切换到暗色模式" }).click();
+      await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+      await page.waitForTimeout(250);
+      const themeToggle = await inspect(page);
+      assert.equal(themeToggle.theme, "dark", `${viewportName} theme-toggle: 深色主题未恢复`);
       assert.deepEqual(
-        themePopover.lightSurfaces,
+        themeToggle.lightSurfaces,
         [],
-        `${viewportName} theme-popover: 主题面板残留浅色区域`
+        `${viewportName} theme-toggle: 深色主题残留浅色区域`
       );
       await page.screenshot({
-        path: path.join(artifactDir, `${viewportName}-theme-popover.png`),
+        path: path.join(artifactDir, `${viewportName}-theme-toggle.png`),
         fullPage: true
       });
-      await page.locator(".theme-control > summary").click();
       await context.close();
     }
 

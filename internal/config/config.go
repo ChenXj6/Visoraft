@@ -22,6 +22,8 @@ type Config struct {
 	S3SecretKey         string
 	S3Region            string
 	S3Bucket            string
+	LibraryRoot         string
+	LibraryHostPath     string
 	ShutdownTimeout     time.Duration
 	PollInterval        time.Duration
 }
@@ -48,6 +50,8 @@ func Load(serviceName string) (Config, error) {
 		S3SecretKey:      envOr("VISORAFT_S3_SECRET_KEY", "visoraft-local-secret"),
 		S3Region:         envOr("VISORAFT_S3_REGION", "us-east-1"),
 		S3Bucket:         envOr("VISORAFT_S3_BUCKET", "visoraft-media"),
+		LibraryRoot:      envOr("VISORAFT_LIBRARY_ROOT", "./storage/library"),
+		LibraryHostPath:  envOr("VISORAFT_LIBRARY_HOST_PATH", "./storage/library"),
 		ShutdownTimeout:  15 * time.Second,
 		PollInterval:     time.Second,
 	}

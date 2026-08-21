@@ -97,26 +97,84 @@ export type MediaAsset = {
   deleted_at?: string;
 };
 
-export type FileFolder = {
+export type LocalLibrarySettings = {
+  host_path: string;
+  requested_host_path: string;
+  auto_sync: boolean;
+  writable: boolean;
+  restart_required: boolean;
+  version: number;
+  updated_at: string;
+};
+
+export type LocalLibraryAsset = {
+  id: string;
+  task_id: string;
+  kind: string;
+  original_name: string;
+  content_type: string;
+  size_bytes: number;
+  checksum_sha256: string;
+  asset_status: string;
+  asset_deleted_at?: string;
+  local_status: "pending" | "syncing" | "available" | "missing" | "removed" | "error";
+  relative_path: string;
+  absolute_path: string;
+  local_size_bytes: number;
+  materialized_at?: string;
+  last_verified_at?: string;
+  missing_at?: string;
+  last_error?: string;
+  created_at: string;
+};
+
+export type LocalLibraryFolder = {
   task_id: string;
   title: string;
   status: string;
   archived: boolean;
+  episode_number?: number;
+  series_scope_key?: string;
+  series_scope?: string;
+  relative_path: string;
+  absolute_path: string;
   updated_at: string;
   file_count: number;
   available_count: number;
-  deleted_count: number;
+  missing_count: number;
+  pending_count: number;
   total_bytes: number;
-  files: MediaAsset[];
+  local_bytes: number;
+  files: LocalLibraryAsset[];
 };
 
-export type FileLibrary = {
+export type LocalLibraryCollection = {
+  key: string;
+  kind: "monitor" | "manual";
+  title: string;
+  monitor_id?: string;
+  series_title?: string;
   folder_count: number;
   file_count: number;
   available_count: number;
-  deleted_count: number;
+  missing_count: number;
+  pending_count: number;
   total_bytes: number;
-  folders: FileFolder[];
+  local_bytes: number;
+  folders: LocalLibraryFolder[];
+};
+
+export type FileLibrary = {
+  settings: LocalLibrarySettings;
+  collection_count: number;
+  folder_count: number;
+  file_count: number;
+  available_count: number;
+  missing_count: number;
+  pending_count: number;
+  total_bytes: number;
+  local_bytes: number;
+  collections: LocalLibraryCollection[];
 };
 
 export type Task = {
@@ -127,6 +185,15 @@ export type Task = {
   cookie_profile_id?: string;
   posting_strategy_id?: string;
   auto_publish: boolean;
+  origin: {
+    kind: "manual" | "monitor";
+    monitor_id?: string;
+    monitor_name?: string;
+    series_title?: string;
+    series_scope_key?: string;
+    series_scope_name?: string;
+    episode_number?: number;
+  };
   publish_job_id?: string;
   publish_status: string;
   publish_mode: "" | "simulation" | "remote" | "mixed";
@@ -909,6 +976,24 @@ export const api = {
     `/api/v1/tasks/${encodeURIComponent(taskId)}/assets/${encodeURIComponent(assetId)}/content`,
   dashboard: () => requestJSON<DashboardSummary>("/api/v1/dashboard"),
   files: () => requestJSON<FileLibrary>("/api/v1/files"),
+  librarySettings: () => requestJSON<LocalLibrarySettings>("/api/v1/library/settings"),
+  updateLibrarySettings: (input: {
+    expected_version: number;
+    host_path: string;
+    auto_sync: boolean;
+  }) =>
+    requestJSON<LocalLibrarySettings>("/api/v1/library/settings", {
+      method: "PUT",
+      body: JSON.stringify(input)
+    }),
+  syncLocalFile: (assetId: string) =>
+    requestJSON<LocalLibraryAsset>(`/api/v1/files/${encodeURIComponent(assetId)}/sync`, {
+      method: "POST"
+    }),
+  deleteLocalFile: (assetId: string) =>
+    requestJSON<void>(`/api/v1/files/${encodeURIComponent(assetId)}/local`, {
+      method: "DELETE"
+    }),
   systemStatus: () => requestJSON<SystemStatus>("/api/v1/system/status"),
   tasks: () => requestJSON<{ items: Task[] }>("/api/v1/tasks"),
   tasksByScope: (scope: "active" | "archived" | "all") =>
@@ -1033,6 +1118,7 @@ export const api = {
       description: string;
       tags: string[];
       category: string;
+      repost_statement_version?: StatementVersion;
       reason: string;
     }
   ) =>
@@ -1217,6 +1303,11 @@ export const api = {
       `/api/v1/publishing/${encodeURIComponent(taskId)}/prepare`,
       { method: "POST" }
     ),
+  setTaskPostingStrategy: (taskId: string, postingStrategyId: string) =>
+    requestJSON<Task>(`/api/v1/tasks/${encodeURIComponent(taskId)}/posting-strategy`, {
+      method: "PUT",
+      body: JSON.stringify({ posting_strategy_id: postingStrategyId })
+    }),
   updatePublishingDraft: (
     taskId: string,
     platform: Platform,

@@ -11,14 +11,11 @@ import {
 import { Icon } from "./icons";
 
 type ThemeMode = "light" | "dark" | "system";
-type Accent = "blue" | "teal" | "violet";
 
 type ThemeContextValue = {
   mode: ThemeMode;
-  accent: Accent;
   resolved: "light" | "dark";
   setMode: (mode: ThemeMode) => void;
-  setAccent: (accent: Accent) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -30,16 +27,8 @@ function storedThemeMode(): ThemeMode {
     : "system";
 }
 
-function storedAccent(): Accent {
-  const value = window.localStorage.getItem("visoraft-accent");
-  return value === "blue" || value === "teal" || value === "violet"
-    ? value
-    : "blue";
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<ThemeMode>(storedThemeMode);
-  const [accent, setAccent] = useState<Accent>(storedAccent);
   const [systemDark, setSystemDark] = useState(() =>
     window.matchMedia("(prefers-color-scheme: dark)").matches
   );
@@ -54,15 +43,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolved;
-    document.documentElement.dataset.accent = accent;
+    document.documentElement.dataset.accent = "blue";
     document.documentElement.style.colorScheme = resolved;
     window.localStorage.setItem("visoraft-theme", mode);
-    window.localStorage.setItem("visoraft-accent", accent);
-  }, [accent, mode, resolved]);
+    window.localStorage.removeItem("visoraft-accent");
+  }, [mode, resolved]);
 
   const value = useMemo(
-    () => ({ mode, accent, resolved, setMode, setAccent }),
-    [accent, mode, resolved]
+    () => ({ mode, resolved, setMode }),
+    [mode, resolved]
   );
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
@@ -73,70 +62,19 @@ function useTheme() {
   return value;
 }
 
-const modeLabels: Record<ThemeMode, string> = {
-  light: "浅色",
-  dark: "深色",
-  system: "跟随系统"
-};
-
-const accentLabels: Record<Accent, string> = {
-  blue: "海湾蓝",
-  teal: "松石青",
-  violet: "暮光紫"
-};
-
 export function ThemeControl() {
-  const { mode, accent, resolved, setMode, setAccent } = useTheme();
+  const { resolved, setMode } = useTheme();
+  const nextMode = resolved === "dark" ? "light" : "dark";
   return (
-    <details className="theme-control">
-      <summary aria-label="外观设置" title="外观设置">
-        <Icon name={resolved === "dark" ? "moon" : "sun"} />
-        <span>外观</span>
-      </summary>
-      <div className="theme-popover">
-        <header>
-          <Icon name="palette" />
-          <div>
-            <strong>界面外观</strong>
-            <small>偏好只保存在当前浏览器</small>
-          </div>
-        </header>
-        <fieldset>
-          <legend>明暗模式</legend>
-          <div className="theme-options">
-            {(Object.keys(modeLabels) as ThemeMode[]).map((item) => (
-              <button
-                type="button"
-                className={mode === item ? "is-active" : ""}
-                aria-pressed={mode === item}
-                onClick={() => setMode(item)}
-                key={item}
-              >
-                {modeLabels[item]}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>强调色</legend>
-          <div className="accent-options">
-            {(Object.keys(accentLabels) as Accent[]).map((item) => (
-              <button
-                type="button"
-                className={accent === item ? "is-active" : ""}
-                aria-label={accentLabels[item]}
-                aria-pressed={accent === item}
-                onClick={() => setAccent(item)}
-                key={item}
-              >
-                <i className={`accent-swatch accent-${item}`} aria-hidden="true" />
-                {accentLabels[item]}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-      </div>
-    </details>
+    <button
+      className="topbar-icon-button theme-toggle-button"
+      type="button"
+      aria-label={`切换到${nextMode === "dark" ? "暗色" : "亮色"}模式`}
+      title={`切换到${nextMode === "dark" ? "暗色" : "亮色"}模式`}
+      onClick={() => setMode(nextMode)}
+    >
+      <Icon name={resolved === "dark" ? "sun" : "moon"} />
+    </button>
   );
 }
 

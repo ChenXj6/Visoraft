@@ -437,6 +437,7 @@ func (s *Service) UpdateMetadata(
 	input.Title = strings.TrimSpace(input.Title)
 	input.Description = strings.TrimSpace(input.Description)
 	input.Category = strings.TrimSpace(input.Category)
+	input.RepostStatementVersion = strings.ToLower(strings.TrimSpace(input.RepostStatementVersion))
 	input.Reason = strings.TrimSpace(input.Reason)
 	input.Tags = normalizeTags(input.Tags)
 	fields := map[string]string{}
@@ -466,12 +467,13 @@ func (s *Service) UpdateMetadata(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var status string
+	var currentStatementVersion string
 	if err := tx.QueryRow(ctx, `
-		SELECT status
+		SELECT status, repost_statement_version
 		FROM tasks
 		WHERE id=$1
 		FOR UPDATE
-	`, taskID).Scan(&status); errors.Is(err, pgx.ErrNoRows) {
+	`, taskID).Scan(&status, &currentStatementVersion); errors.Is(err, pgx.ErrNoRows) {
 		return Detail{}, tasks.ErrNotFound
 	} else if err != nil {
 		return Detail{}, fmt.Errorf("lock task metadata: %w", err)
@@ -481,6 +483,14 @@ func (s *Service) UpdateMetadata(
 			Code:    "metadata_not_editable",
 			Message: "只有待人工审核任务可以修改元数据",
 		}
+	}
+	if input.RepostStatementVersion == "" {
+		input.RepostStatementVersion = currentStatementVersion
+	}
+	if input.RepostStatementVersion != tasks.StatementBriefV1 && input.RepostStatementVersion != tasks.StatementFullV1 {
+		return Detail{}, &ValidationError{Fields: map[string]string{
+			"repost_statement_version": "转载声明必须选择简洁版或完整版",
+		}}
 	}
 	var version int
 	if err := tx.QueryRow(ctx, `
@@ -505,14 +515,15 @@ func (s *Service) UpdateMetadata(
 	if _, err := tx.Exec(ctx, `
 		UPDATE tasks
 		SET title=$2, description=$3, tags=$4, category=$5,
-		    updated_at=$6, version=version+1
+		    repost_statement_version=$6, updated_at=$7, version=version+1
 		WHERE id=$1
-	`, taskID, input.Title, input.Description, input.Tags, input.Category, now); err != nil {
+	`, taskID, input.Title, input.Description, input.Tags, input.Category, input.RepostStatementVersion, now); err != nil {
 		return Detail{}, fmt.Errorf("update task metadata: %w", err)
 	}
 	if err := insertAudit(ctx, tx, taskID, "review.metadata.updated", map[string]any{
-		"metadata_version": version,
-		"reason":           input.Reason,
+		"metadata_version":         version,
+		"reason":                   input.Reason,
+		"repost_statement_version": input.RepostStatementVersion,
 	}, now); err != nil {
 		return Detail{}, err
 	}

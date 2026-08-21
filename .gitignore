@@ -48,6 +48,8 @@ __pycache__/
 docs/TEST_STATUS_*.md
 docs/*_TEST_*.md
 diagram/**/*.png
+.ui-audit/
+.compare-*.png
 
 # Private reconstruction references; never publish with the independent source tree
 docs/v1/architecture/legacy-package/

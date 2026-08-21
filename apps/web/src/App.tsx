@@ -15,6 +15,7 @@ import {
   useLocation
 } from "react-router-dom";
 import { api } from "./api";
+import { SideDrawer } from "./components";
 import { Icon, type IconName } from "./icons";
 import CookieProfilesPage from "./pages/CookieProfilesPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -102,6 +103,46 @@ const navigation: NavigationItem[] = [
   }
 ];
 
+const commands = [
+  {
+    to: "/tasks/new",
+    label: "新建任务",
+    description: "从视频链接创建处理任务",
+    icon: "plus" as IconName,
+    shortcut: "Ctrl N",
+    section: "最近"
+  },
+  {
+    to: "/reviews",
+    label: "跳转到审核",
+    description: "打开等待处理的审核队列",
+    icon: "review" as IconName,
+    shortcut: "G R",
+    section: "最近"
+  },
+  {
+    to: "/cookies",
+    label: "管理 Cookie",
+    description: "查看登录凭据与同步状态",
+    icon: "cookie" as IconName,
+    section: "操作"
+  },
+  {
+    to: "/monitors/new",
+    label: "新建 YouTube 监控",
+    description: "创建关键词、频道或完整剧集监控",
+    icon: "monitor" as IconName,
+    section: "操作"
+  },
+  {
+    to: "/files",
+    label: "重新扫描文件库",
+    description: "打开文件库并检查本地文件状态",
+    icon: "folder" as IconName,
+    section: "操作"
+  }
+];
+
 function NavGlyph({ name }: { name: IconName }) {
   return (
     <span className="nav-glyph" aria-hidden="true">
@@ -123,8 +164,8 @@ function CommandPalette({
 
   const results = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
-    if (!normalized) return navigation;
-    return navigation.filter((item) =>
+    if (!normalized) return commands;
+    return commands.filter((item) =>
       `${item.label} ${item.description}`.toLocaleLowerCase().includes(normalized)
     );
   }, [query]);
@@ -163,25 +204,26 @@ function CommandPalette({
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="输入页面名称，例如“审核”或“Cookie”"
+          placeholder="输入命令或搜索…"
         />
-        <button type="button" aria-label="关闭命令面板" onClick={onClose}>
-          <Icon name="close" />
+        <button className="command-palette-escape" type="button" aria-label="关闭命令面板" onClick={onClose}>
+          ESC
         </button>
       </div>
       <div className="command-palette-body">
-        <p id="command-palette-title">前往页面</p>
+        <p id="command-palette-title">{results[0]?.section ?? "命令"}</p>
         {results.length === 0 ? (
-          <div className="command-empty">没有匹配页面</div>
+          <div className="command-empty">没有匹配命令</div>
         ) : (
           <nav aria-label="命令结果">
-            {results.map((item) => (
-              <Link to={item.to} onClick={onClose} key={item.to}>
+            {results.map((item, index) => (
+              <Link className={index === 0 ? "is-selected" : ""} to={item.to} onClick={onClose} key={item.to}>
                 <NavGlyph name={item.icon} />
                 <span>
                   <strong>{item.label}</strong>
                   <small>{item.description}</small>
                 </span>
+                {item.shortcut ? <kbd>{item.shortcut}</kbd> : null}
               </Link>
             ))}
           </nav>
@@ -194,11 +236,17 @@ function CommandPalette({
 function Shell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
   const system = useQuery({
     queryKey: ["system-status"],
     queryFn: api.systemStatus,
     refetchInterval: 10_000
+  });
+  const drawerSummary = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: api.dashboard,
+    enabled: drawerOpen
   });
 
   useEffect(() => {
@@ -314,7 +362,6 @@ function Shell() {
           </button>
 
           <div className="command-spacer" />
-          <ThemeControl />
           <span
             className={`global-health ${controlReady ? "global-health-ready" : ""}`}
             role="status"
@@ -323,9 +370,13 @@ function Shell() {
             <i aria-hidden="true" />
             {controlReady ? "服务运行正常" : system.isPending ? "正在连接" : "服务异常"}
           </span>
+          <ThemeControl />
+          <button className="topbar-icon-button" type="button" aria-label="查看通知与运行概览" onClick={() => setDrawerOpen(true)}>
+            <Icon name="bell" />
+          </button>
           <NavLink to="/tasks/new" className="quick-create">
             <Icon name="plus" />
-            新建任务
+            <span className="quick-create-label">新建任务</span>
           </NavLink>
         </header>
 
@@ -362,6 +413,42 @@ function Shell() {
       </div>
 
       <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
+      <SideDrawer
+        open={drawerOpen}
+        title="运行概览"
+        onClose={() => setDrawerOpen(false)}
+        footer={
+          <>
+            <button className="button button-secondary button-small" type="button" onClick={() => setDrawerOpen(false)}>
+              关闭
+            </button>
+            <Link className="button button-primary button-small" to="/tasks" onClick={() => setDrawerOpen(false)}>
+              查看任务
+            </Link>
+          </>
+        }
+      >
+        {drawerSummary.isPending ? (
+          <div className="drawer-loading" aria-busy="true">正在读取运行数据</div>
+        ) : drawerSummary.isError ? (
+          <div className="drawer-error" role="alert">运行数据暂时不可用</div>
+        ) : (
+          <div className="drawer-metric-list">
+            <Link to="/tasks" onClick={() => setDrawerOpen(false)}>
+              <span>处理中</span><strong>{drawerSummary.data?.active ?? 0}</strong>
+            </Link>
+            <Link to="/reviews" onClick={() => setDrawerOpen(false)}>
+              <span>等待审核</span><strong>{drawerSummary.data?.awaiting_manual_review ?? 0}</strong>
+            </Link>
+            <Link to="/tasks?status=failed" onClick={() => setDrawerOpen(false)}>
+              <span>需要处理</span><strong>{drawerSummary.data?.failed ?? 0}</strong>
+            </Link>
+            <Link to="/publishing" onClick={() => setDrawerOpen(false)}>
+              <span>已投稿</span><strong>{drawerSummary.data?.published ?? 0}</strong>
+            </Link>
+          </div>
+        )}
+      </SideDrawer>
     </div>
   );
 }

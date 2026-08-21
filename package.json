@@ -1,6 +1,6 @@
 {
   "name": "visoraft",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "packageManager": "pnpm@11.9.0",
   "scripts": {
@@ -11,6 +11,8 @@
     "e2e:operations": "node tests/e2e/operations-e2e.cjs",
     "e2e:visual": "node tests/e2e/visual-audit.cjs",
     "e2e:dark": "node tests/e2e/dark-mode-all-pages.cjs",
+    "e2e:library:api": "node tests/e2e/local-library-api.cjs",
+    "e2e:library": "node tests/e2e/local-library.cjs",
     "e2e:all": "pnpm e2e:local && pnpm e2e:operations"
   },
   "devDependencies": {

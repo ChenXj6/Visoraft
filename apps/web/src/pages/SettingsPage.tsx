@@ -5,6 +5,7 @@ import {
   api,
   ApiError,
   type ApplicationSettings,
+  type LocalLibrarySettings,
   type ModelEndpoint,
   type PromptEntry,
   type UpdateSettingsInput
@@ -27,6 +28,7 @@ type SettingsTab =
   | "transcode"
   | "moderation"
   | "publishing"
+  | "library"
   | "youtube";
 type ModelKey = keyof ApplicationSettings["models"];
 type PromptKey = keyof ApplicationSettings["prompts"];
@@ -57,15 +59,29 @@ const existingSubtitleSources = [
 ] as const;
 
 const tabLabels: Record<SettingsTab, { icon: IconName; label: string; note: string }> = {
-  review: { icon: "review", label: "审核策略", note: "手动 / 自动" },
-  automation: { icon: "route", label: "全流程", note: "处理自动化" },
-  models: { icon: "model", label: "模型接入", note: "全局与覆盖" },
+  review: { icon: "review", label: "审核策略", note: "手动 / 自动模式与规则" },
+  automation: { icon: "bolt", label: "全流程自动化", note: "处理流水线开关" },
+  models: { icon: "screen", label: "模型接入", note: "全局与专用覆盖" },
   subtitles: { icon: "subtitles", label: "字幕与语音", note: "识别 / 分段 / 质检" },
-  prompts: { icon: "prompt", label: "提示词", note: "翻译与质检规则" },
+  prompts: { icon: "file", label: "提示词规则", note: "翻译与质检指令" },
   transcode: { icon: "media", label: "视频处理", note: "格式与画质" },
   moderation: { icon: "shield", label: "内容安全", note: "阿里云凭证" },
-  publishing: { icon: "route", label: "投稿运行", note: "并发 / 重试" },
-  youtube: { icon: "monitor", label: "YouTube", note: "监控数据源" }
+  publishing: { icon: "activity", label: "投稿运行", note: "并发 / 重试策略" },
+  library: { icon: "folder", label: "本地媒体库", note: "位置与同步" },
+  youtube: { icon: "screen", label: "YouTube 数据源", note: "监控与发现配置" }
+};
+
+const settingsIconTones: Record<SettingsTab, "primary" | "ok" | "warn" | "miss" | "neutral"> = {
+  review: "primary",
+  automation: "ok",
+  models: "warn",
+  subtitles: "primary",
+  prompts: "neutral",
+  transcode: "ok",
+  moderation: "miss",
+  publishing: "primary",
+  library: "ok",
+  youtube: "miss"
 };
 
 function message(error: unknown, fallback: string) {
@@ -123,20 +139,228 @@ function SettingsSection({
   help?: ReactNode;
   children: ReactNode;
 }) {
-  return (
-    <section className="work-panel settings-section">
-      <header className="section-heading">
-        <span className="sequence-mark"><Icon name={icon} /></span>
-        <div className="section-heading-copy">
-          <div className="section-heading-tools">
+  const flatSection = title === "字幕流水线总开关";
+  const initiallyOpen = [
+    "审核路径",
+    "全流程开关",
+    "全局模型",
+    "字幕流水线总开关",
+    "存储位置",
+    "监控数据源"
+  ].includes(title);
+  if (flatSection) {
+    return (
+      <section className="settings-config-section settings-config-section-flat" data-settings-section={title}>
+        <div className="settings-section-heading">
+          <div className="settings-section-heading-tools">
             <h2>{title}</h2>
             {help}
           </div>
           <p>{description}</p>
         </div>
-      </header>
-      {children}
+        <div className="settings-flat-body">{children}</div>
+      </section>
+    );
+  }
+  return (
+    <section className="settings-config-section" data-settings-section={title}>
+      <div className="settings-section-heading">
+        <h2>{title}</h2>
+        <p>{description}</p>
+      </div>
+      <details className="settings-collapse" open={initiallyOpen}>
+        <summary>
+          <span className="settings-collapse-icon"><Icon name={icon} /></span>
+          <span className="settings-collapse-copy">
+            <strong>{title}</strong>
+            <small>{description}</small>
+          </span>
+          {help && <span className="settings-collapse-help">{help}</span>}
+          <span className="settings-collapse-chevron" aria-hidden="true" />
+        </summary>
+        <div className="settings-collapse-body">
+          {children}
+        </div>
+      </details>
     </section>
+  );
+}
+
+type SettingsHomeCard = {
+  key: SettingsTab;
+  status: string;
+  statusTone: "ok" | "warn" | "miss" | "neutral";
+  chips: Array<{ label: string; tone: "ok" | "warn" | "miss" | "neutral" }>;
+};
+
+function SettingsHome({
+  draft,
+  library,
+  onSelect
+}: {
+  draft: ApplicationSettings;
+  library?: LocalLibrarySettings;
+  onSelect: (tab: SettingsTab) => void;
+}) {
+  const modelReady = Boolean(
+    draft.models.global.enabled &&
+      draft.models.global.base_url &&
+      draft.models.global.model &&
+      draft.secret_configured[secretKeys.global]
+  );
+  const moderationReady = Boolean(
+    draft.secret_configured["aliyun.access_key_id"] &&
+      draft.secret_configured["aliyun.access_key_secret"]
+  );
+  const youtubeReady =
+    draft.youtube.provider !== "google" ||
+    Boolean(draft.secret_configured["youtube.api_key"]);
+  const cards: SettingsHomeCard[] = [
+    {
+      key: "review",
+      status: "已配置",
+      statusTone: "ok",
+      chips: [
+        { label: draft.review.mode === "manual" ? "人工审核" : "自动审核", tone: "ok" },
+        { label: "自动规则 4 项", tone: "neutral" }
+      ]
+    },
+    {
+      key: "automation",
+      status: draft.automation.enabled ? "已启用" : "已关闭",
+      statusTone: draft.automation.enabled ? "ok" : "neutral",
+      chips: [
+        { label: "翻译标题", tone: draft.automation.translate_title ? "ok" : "neutral" },
+        { label: "翻译简介", tone: draft.automation.translate_description ? "ok" : "neutral" },
+        { label: "生成标签", tone: draft.automation.generate_tags ? "ok" : "neutral" },
+        { label: "处理封面", tone: draft.automation.process_cover ? "ok" : "neutral" }
+      ]
+    },
+    {
+      key: "models",
+      status: modelReady ? "已配置" : "需关注",
+      statusTone: modelReady ? "ok" : "warn",
+      chips: [
+        { label: "全局模型", tone: modelReady ? "ok" : "miss" },
+        { label: "字幕翻译", tone: draft.models.subtitle_translation.mode === "disabled" ? "miss" : "warn" },
+        { label: "字幕质检", tone: draft.models.subtitle_qc.mode === "disabled" ? "miss" : "warn" },
+        { label: "智能分段", tone: draft.models.smart_segmentation.mode === "disabled" ? "miss" : "neutral" }
+      ]
+    },
+    {
+      key: "subtitles",
+      status: draft.subtitle.enabled ? "已配置" : "已关闭",
+      statusTone: draft.subtitle.enabled ? "ok" : "neutral",
+      chips: [
+        { label: "已有字幕识别", tone: draft.subtitle.existing_chinese.enabled ? "ok" : "neutral" },
+        { label: "ASR 回退", tone: draft.subtitle.asr.enabled ? "ok" : "neutral" },
+        { label: "智能分段", tone: draft.subtitle.segmentation.enabled ? "ok" : "neutral" },
+        { label: "时间轴后处理", tone: "ok" }
+      ]
+    },
+    {
+      key: "prompts",
+      status: "内置",
+      statusTone: "neutral",
+      chips: [
+        { label: "字幕翻译", tone: draft.prompts.subtitle_translation.mode === "builtin" ? "neutral" : "ok" },
+        { label: "严格补救", tone: draft.prompts.subtitle_translation_strict.mode === "builtin" ? "neutral" : "ok" },
+        { label: "字幕质检", tone: draft.prompts.subtitle_qc.mode === "builtin" ? "neutral" : "ok" },
+        { label: "智能分段", tone: draft.prompts.smart_segmentation.mode === "builtin" ? "neutral" : "ok" },
+        { label: "元数据翻译", tone: draft.prompts.metadata_translation.mode === "builtin" ? "neutral" : "ok" }
+      ]
+    },
+    {
+      key: "transcode",
+      status: draft.transcode.enabled ? "已配置" : "已关闭",
+      statusTone: draft.transcode.enabled ? "ok" : "neutral",
+      chips: [
+        { label: `${draft.transcode.video_codec.toUpperCase()} / ${draft.transcode.container.toUpperCase()}`, tone: "ok" },
+        { label: draft.transcode.maximum_height ? `${draft.transcode.maximum_height}p` : "保留原分辨率", tone: "ok" },
+        { label: draft.transcode.video_bitrate_kbps ? `${draft.transcode.video_bitrate_kbps} Kbps` : "自动码率", tone: "ok" },
+        { label: "烧录字幕", tone: draft.transcode.burn_subtitles ? "warn" : "neutral" }
+      ]
+    },
+    {
+      key: "moderation",
+      status: moderationReady ? "已配置" : "未配置",
+      statusTone: moderationReady ? "ok" : "miss",
+      chips: [
+        { label: "阿里云凭证", tone: moderationReady ? "ok" : "miss" },
+        { label: draft.moderation.enabled ? "内容审核已启用" : "各渠道默认关闭", tone: draft.moderation.enabled ? "warn" : "neutral" }
+      ]
+    },
+    {
+      key: "publishing",
+      status: "已配置",
+      statusTone: "ok",
+      chips: [
+        { label: `并发 ${draft.publishing.maximum_concurrent_uploads}`, tone: "ok" },
+        { label: `重试 ${draft.publishing.maximum_attempts} 次`, tone: "ok" },
+        { label: draft.publishing.auto_publish_after_review ? "审核后自动投稿" : "审核后手动投稿", tone: "neutral" }
+      ]
+    },
+    {
+      key: "library",
+      status: library?.writable ? "可写入" : library ? "不可写入" : "读取中",
+      statusTone: library?.writable ? "ok" : library ? "miss" : "neutral",
+      chips: [
+        { label: library?.host_path || "本地媒体库", tone: library?.writable ? "ok" : "neutral" },
+        { label: library?.auto_sync ? "自动同步" : "按需同步", tone: library?.auto_sync ? "ok" : "neutral" }
+      ]
+    },
+    {
+      key: "youtube",
+      status: youtubeReady ? "已配置" : "需关注",
+      statusTone: youtubeReady ? "ok" : "warn",
+      chips: [
+        { label: draft.youtube.provider === "google" ? "Google Data API" : "本地数据源", tone: youtubeReady ? "ok" : "miss" },
+        { label: draft.youtube.proxy_enabled ? "独立代理已启用" : "直连", tone: "neutral" }
+      ]
+    }
+  ];
+
+  return (
+    <div className="settings-home">
+      <div className="settings-banner">
+        <span className="settings-banner-icon"><Icon name="layers" /></span>
+        <div className="settings-banner-text">
+          <h2>所有配置一目了然</h2>
+          <p>点击下方任一卡片进入详细配置。每张卡片右上角的状态标签告诉你哪些需要关注。</p>
+        </div>
+      </div>
+      <div className="settings-category-grid">
+        {cards.map((card) => {
+          const meta = tabLabels[card.key];
+          return (
+            <button
+              className="settings-cat-card"
+              type="button"
+              key={card.key}
+              onClick={() => onSelect(card.key)}
+            >
+              <span className="settings-cat-head">
+                <span className={`settings-cat-icon settings-cat-icon-${settingsIconTones[card.key]}`}>
+                  <Icon name={meta.icon} />
+                </span>
+                <span className="settings-cat-info">
+                  <strong>{meta.label}</strong>
+                  <small>{meta.note}</small>
+                </span>
+                <span className={`settings-cat-status status-${card.statusTone}`}>{card.status}</span>
+              </span>
+              <span className="settings-cat-items">
+                {card.chips.map((chip) => (
+                  <span className={`settings-item-chip is-${chip.tone}`} key={chip.label}>
+                    <i aria-hidden="true" />{chip.label}
+                  </span>
+                ))}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -392,12 +616,14 @@ export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("section");
+  const isHome = !(requestedTab && requestedTab in tabLabels);
   const initialTab =
     requestedTab && requestedTab in tabLabels
       ? (requestedTab as SettingsTab)
       : "review";
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [draft, setDraft] = useState<ApplicationSettings>();
+  const [libraryDraft, setLibraryDraft] = useState<LocalLibrarySettings>();
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
   const [testNotice, setTestNotice] = useState<Record<string, string>>({});
@@ -406,12 +632,26 @@ export default function SettingsPage() {
     queryKey: ["settings"],
     queryFn: api.settings
   });
+  const librarySettings = useQuery({
+    queryKey: ["library-settings"],
+    queryFn: api.librarySettings
+  });
 
   useEffect(() => {
     if (settings.data) {
       setDraft(structuredClone(settings.data));
     }
   }, [settings.data]);
+
+  useEffect(() => {
+    if (librarySettings.data) {
+      setLibraryDraft({
+        ...librarySettings.data,
+        requested_host_path:
+          librarySettings.data.requested_host_path || librarySettings.data.host_path
+      });
+    }
+  }, [librarySettings.data]);
 
   useEffect(() => {
     const next = searchParams.get("section");
@@ -425,10 +665,29 @@ export default function SettingsPage() {
     onSuccess: async (value) => {
       setDraft(structuredClone(value));
       setSecrets({});
-      setNotice(`配置版本 v${value.version} 已保存；新任务将使用此版本快照。`);
+      setNotice("配置已保存；新任务将使用最新设置。");
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (error) => setNotice(message(error, "配置保存失败"))
+  });
+  const saveLibrary = useMutation({
+    mutationFn: api.updateLibrarySettings,
+    onSuccess: async (value) => {
+      setLibraryDraft({
+        ...value,
+        requested_host_path: value.requested_host_path || value.host_path
+      });
+      setNotice(
+        value.restart_required
+          ? "新位置已保存，请按页面提示应用后再写入文件。"
+          : "本地媒体库设置已保存。"
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["library-settings"] }),
+        queryClient.invalidateQueries({ queryKey: ["files"] })
+      ]);
+    },
+    onError: (error) => setNotice(message(error, "本地媒体库设置保存失败"))
   });
 
   const testConnection = useMutation({
@@ -446,7 +705,7 @@ export default function SettingsPage() {
   });
 
   if (settings.isPending || !draft) {
-    return <LoadingBlock label="正在读取版本化配置" />;
+    return <LoadingBlock label="正在读取配置" />;
   }
   if (settings.isError) {
     return (
@@ -491,6 +750,16 @@ export default function SettingsPage() {
     save.mutate(input);
   };
 
+  const submitLibrary = () => {
+    if (!libraryDraft) return;
+    setNotice("");
+    saveLibrary.mutate({
+      expected_version: libraryDraft.version,
+      host_path: libraryDraft.requested_host_path,
+      auto_sync: libraryDraft.auto_sync
+    });
+  };
+
   const modelMeta: Record<ModelKey, [string, string]> = {
     global: ["全局模型", "元数据与所有继承型能力的默认入口。"],
     subtitle_translation: ["字幕翻译专用模型", "覆盖全局模型，专门处理批量字幕翻译。"],
@@ -507,17 +776,37 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader
-        title="处理策略与服务接入"
-        description={`当前版本 v${draft.version}。保存后只影响新任务；运行中的任务继续使用创建时快照。`}
+        title={isHome ? "设置中心" : tabLabels[tab].label}
         actions={
-          <button
-            className="button button-primary"
-            type="button"
-            disabled={save.isPending}
-            onClick={submit}
-          >
-            {save.isPending ? "正在保存…" : "保存新版本"}
-          </button>
+          isHome ? (
+            <button
+              className="button button-secondary button-small"
+              type="button"
+              onClick={() => setNotice(`当前配置版本 v${draft.version}`)}
+            >
+              版本历史
+            </button>
+          ) : (
+            <>
+              <button
+                className="button button-secondary button-small"
+                type="button"
+                onClick={() => setSearchParams({}, { replace: true })}
+              >
+                返回设置首页
+              </button>
+              <button
+                className="button button-primary"
+                type="button"
+                disabled={tab === "library" ? saveLibrary.isPending || !libraryDraft : save.isPending}
+                onClick={tab === "library" ? submitLibrary : submit}
+              >
+                {tab === "library"
+                  ? saveLibrary.isPending ? "正在保存…" : "保存存储设置"
+                  : save.isPending ? "正在保存…" : "保存新版本"}
+              </button>
+            </>
+          )
         }
       />
 
@@ -530,12 +819,22 @@ export default function SettingsPage() {
         </TransientNotice>
       )}
 
-      <div className="settings-workbench">
-        <nav className="settings-index" aria-label="设置分组">
+      {isHome ? (
+        <SettingsHome
+          draft={draft}
+          library={libraryDraft}
+          onSelect={(nextTab) => {
+            setTab(nextTab);
+            setSearchParams({ section: nextTab }, { replace: true });
+          }}
+        />
+      ) : (
+      <div className="settings-detail settings-workbench">
+        <nav className="settings-sub-nav settings-index" aria-label="设置分组">
           {(Object.keys(tabLabels) as SettingsTab[]).map((key) => (
             <button
               type="button"
-              className={tab === key ? "is-active" : ""}
+              className={`settings-sub-nav-item ${tab === key ? "is-active active" : ""}`}
               aria-current={tab === key ? "page" : undefined}
               onClick={() => {
                 setTab(key);
@@ -545,15 +844,73 @@ export default function SettingsPage() {
             >
               <span><Icon name={tabLabels[key].icon} /></span>
               <strong>{tabLabels[key].label}</strong>
-              <small>{tabLabels[key].note}</small>
             </button>
           ))}
-          <p>
-            密钥仅写入加密存储，不会回显。页面中的“已配置”只表示存在密文。
-          </p>
         </nav>
 
-        <div className="settings-stage">
+        <div className={`settings-content settings-stage ${tab === "subtitles" ? "settings-stage-subtitles" : ""}`}>
+          {tab === "library" && (
+            librarySettings.isPending || !libraryDraft ? (
+              <LoadingBlock label="正在读取本地媒体库设置" />
+            ) : librarySettings.isError ? (
+              <QueryError
+                title="本地媒体库设置暂时不可用"
+                message={message(librarySettings.error, "无法读取本地媒体库设置")}
+                retry={() => void librarySettings.refetch()}
+              />
+            ) : (
+              <SettingsSection
+                icon="folder"
+                title="存储位置"
+                description="文件会按监控集合、剧集和独立任务整理到这个目录中。"
+              >
+                <div className="library-settings-current">
+                  <span>当前生效位置</span>
+                  <code>{libraryDraft.host_path}</code>
+                  <strong className={libraryDraft.writable ? "is-ready" : "is-error"}>
+                    {libraryDraft.writable ? "可写入" : "不可写入"}
+                  </strong>
+                </div>
+                <div className="settings-form-grid">
+                  <label className="field field-wide">
+                    <span>电脑上的存储位置</span>
+                    <input
+                      value={libraryDraft.requested_host_path}
+                      onChange={(event) => setLibraryDraft({
+                        ...libraryDraft,
+                        requested_host_path: event.target.value
+                      })}
+                      placeholder="例如 D:/Visoraft媒体库"
+                    />
+                    <small>请输入绝对路径。系统不会删除这个目录中的未知文件。</small>
+                  </label>
+                </div>
+                <Toggle
+                  checked={libraryDraft.auto_sync}
+                  onChange={(auto_sync) => setLibraryDraft({ ...libraryDraft, auto_sync })}
+                  label="自动保存到本地"
+                  description="任务生成文件后自动复制到上面的电脑目录；关闭后可在文件页逐个同步。"
+                />
+                {(libraryDraft.restart_required ||
+                  libraryDraft.requested_host_path.replace(/[\\/]+$/, "").toLowerCase() !==
+                    libraryDraft.host_path.replace(/[\\/]+$/, "").toLowerCase()) && (
+                  <div className="library-restart-callout" role="status">
+                    <strong>保存后应用新位置</strong>
+                    <p>在项目目录运行下面的命令，服务会重新挂载目录；任务和数据库不会被清理。</p>
+                    <code>.\scripts\local.ps1 storage</code>
+                  </div>
+                )}
+                <div className="settings-link-panel library-file-link">
+                  <div>
+                    <strong>查看已经保存的文件</strong>
+                    <p>文件被手动移走或删除后，文件页会标记为“本地缺失”，可重新同步。</p>
+                  </div>
+                  <Link className="button button-secondary" to="/files">打开本地文件</Link>
+                </div>
+              </SettingsSection>
+            )
+          )}
+
           {tab === "review" && (
             <>
               <SettingsSection
@@ -858,8 +1215,8 @@ export default function SettingsPage() {
             <>
               <SettingsSection
                 icon="subtitles"
-                title="字幕来源与语音识别"
-                description="先使用视频已有字幕；没有合适字幕时，再从声音生成文字。"
+                title="字幕流水线总开关"
+                description="下载完成后创建独立字幕步骤；失败可单独重试。"
                 help={
                   <HelpLink label="配置与申请" title="如何配置语音识别服务">
                     <p>语音识别用于视频没有可用字幕时，从声音生成带时间轴的字幕。</p>
@@ -887,40 +1244,46 @@ export default function SettingsPage() {
                   label="启用字幕流水线"
                   description="下载完成后创建独立字幕步骤；失败可单独重试。"
                 />
-                <div className="config-slab existing-subtitle-settings">
-                  <header>
-                    <div>
-                      <p className="eyebrow">处理前检查</p>
-                      <h3>已有中文字幕识别</h3>
-                      <p>
-                        先检查平台字幕、媒体字幕轨与画面硬字幕；确认已有中文字幕后不再调用翻译模型。
-                      </p>
-                    </div>
-                    <span
-                      className={`config-readiness ${
-                        draft.subtitle.existing_chinese.enabled ? "is-on" : ""
-                      }`}
-                    >
+                <div className="settings-section-heading settings-inline-heading settings-existing-heading">
+                  <div className="settings-section-title-row">
+                    <h2>已有中文字幕识别</h2>
+                    <span className={`settings-cat-status ${draft.subtitle.existing_chinese.enabled ? "status-ok" : "status-neutral"}`}>
                       {draft.subtitle.existing_chinese.enabled ? "已启用" : "未启用"}
                     </span>
-                  </header>
-                  <Toggle
-                    checked={draft.subtitle.existing_chinese.enabled}
-                    onChange={(enabled) =>
-                      setDraft({
-                        ...draft,
-                        subtitle: {
-                          ...draft.subtitle,
-                          existing_chinese: {
-                            ...draft.subtitle.existing_chinese,
-                            enabled
+                  </div>
+                  <p>先检查平台字幕、媒体字幕轨与画面硬字幕；确认已有中文字幕后不再调用翻译模型。</p>
+                </div>
+                <details className="settings-collapse existing-subtitle-settings" open>
+                  <summary>
+                    <button
+                      type="button"
+                      className={`settings-collapse-switch ${
+                        draft.subtitle.existing_chinese.enabled ? "is-on" : ""
+                      }`}
+                      aria-label="切换已有中文字幕识别"
+                      aria-pressed={draft.subtitle.existing_chinese.enabled}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setDraft({
+                          ...draft,
+                          subtitle: {
+                            ...draft.subtitle,
+                            existing_chinese: {
+                              ...draft.subtitle.existing_chinese,
+                              enabled: !draft.subtitle.existing_chinese.enabled
+                            }
                           }
-                        }
-                      })
-                    }
-                    label="优先识别已有中文字幕"
-                    description="检测异常或证据不足时自动继续原 ASR 与翻译流程，不会误跳过。"
-                  />
+                        });
+                      }}
+                    />
+                    <span className="settings-collapse-copy">
+                      <strong>优先识别已有中文字幕</strong>
+                      <small>检测异常或证据不足时自动继续原 ASR 与翻译流程</small>
+                    </span>
+                    <span className="settings-collapse-chevron" aria-hidden="true" />
+                  </summary>
+                  <div className="settings-collapse-body">
                   {draft.subtitle.existing_chinese.enabled && (
                     <>
                       <div className="settings-form-grid existing-subtitle-sources">
@@ -1048,7 +1411,21 @@ export default function SettingsPage() {
                       </p>
                     </>
                   )}
-                </div>
+                  </div>
+                </details>
+                <details className="settings-collapse subtitle-language-settings">
+                  <summary>
+                    <span className="settings-collapse-icon"><Icon name="model" /></span>
+                    <span className="settings-collapse-copy">
+                      <strong>ASR 回退</strong>
+                      <small>{draft.subtitle.asr.provider === "aliyun_paraformer" ? "阿里云百炼 Paraformer" : draft.subtitle.asr.model} · {draft.secret_configured["subtitle.asr.api_key"] ? "已配置 API Key" : "尚未配置 API Key"}</small>
+                    </span>
+                    <span className={`settings-cat-status ${draft.subtitle.asr.enabled ? "status-ok" : "status-neutral"}`}>
+                      {draft.subtitle.asr.enabled ? "已启用" : "未启用"}
+                    </span>
+                    <span className="settings-collapse-chevron" aria-hidden="true" />
+                  </summary>
+                  <div className="settings-collapse-body">
                 <div className="settings-form-grid">
                   <label className="field">
                     <span>来源策略</span>
@@ -1126,8 +1503,34 @@ export default function SettingsPage() {
                     label="启用 ASR 回退"
                   />
                 </div>
+                  </div>
+                </details>
+                <div className="settings-section-heading settings-inline-heading settings-asr-heading">
+                  <div className="settings-section-title-row">
+                    <h2>语音识别（ASR 回退）</h2>
+                    <span className={`settings-cat-status ${draft.subtitle.asr.enabled ? "status-ok" : "status-neutral"}`}>
+                      {draft.subtitle.asr.enabled ? "已启用" : "未启用"}
+                    </span>
+                  </div>
+                  <p>视频没有可用字幕时，从声音生成带时间轴的字幕。</p>
+                </div>
+                <div className="settings-section-heading settings-inline-heading settings-asr-model-heading">
+                  <div className="settings-section-title-row">
+                    <h2>语音识别（ASR 回退）</h2>
+                  </div>
+                  <p>没有可用字幕时，从音频中识别文字；支持指定模型与关键词热词。</p>
+                </div>
                 {draft.subtitle.asr.enabled && (
-                  <div className="config-slab">
+                  <details className="settings-collapse subtitle-asr-settings">
+                    <summary>
+                      <span className="settings-collapse-icon"><Icon name="model" /></span>
+                      <span className="settings-collapse-copy">
+                        <strong>ASR 模型与参数</strong>
+                        <small>模型选择 + 服务地址、语言、超时与重试参数</small>
+                      </span>
+                      <span className="settings-collapse-chevron" aria-hidden="true" />
+                    </summary>
+                    <div className="settings-collapse-body">
                     <div className="settings-form-grid">
                       <label className="field">
                         <span>ASR 提供商</span>
@@ -1355,7 +1758,8 @@ export default function SettingsPage() {
                       </button>
                       {testNotice.asr && <span>{testNotice.asr}</span>}
                     </div>
-                  </div>
+                    </div>
+                  </details>
                 )}
               </SettingsSection>
 
@@ -2532,8 +2936,44 @@ export default function SettingsPage() {
               </SettingsSection>
             </>
           )}
+          <div className="settings-save-bar">
+            <span className="settings-save-bar-icon"><Icon name="history" /></span>
+            <div>
+              <strong>修改将以新版本保存</strong>
+              <small>新任务立即使用新版本，进行中的任务不受影响。</small>
+            </div>
+            <button
+              className="button button-secondary button-small"
+              type="button"
+              onClick={() => {
+                if (settings.data) setDraft(structuredClone(settings.data));
+                if (librarySettings.data) {
+                  setLibraryDraft({
+                    ...librarySettings.data,
+                    requested_host_path:
+                      librarySettings.data.requested_host_path || librarySettings.data.host_path
+                  });
+                }
+                setSecrets({});
+                setNotice("");
+              }}
+            >
+              放弃更改
+            </button>
+            <button
+              className="button button-primary"
+              type="button"
+              disabled={tab === "library" ? saveLibrary.isPending || !libraryDraft : save.isPending}
+              onClick={tab === "library" ? submitLibrary : submit}
+            >
+              {tab === "library"
+                ? saveLibrary.isPending ? "正在保存…" : "保存存储设置"
+                : save.isPending ? "正在保存…" : "保存新版本"}
+            </button>
+          </div>
         </div>
       </div>
+      )}
     </>
   );
 }

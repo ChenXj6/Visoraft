@@ -88,11 +88,12 @@ type Detail struct {
 }
 
 type MetadataInput struct {
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Tags        []string `json:"tags"`
-	Category    string   `json:"category"`
-	Reason      string   `json:"reason"`
+	Title                  string   `json:"title"`
+	Description            string   `json:"description"`
+	Tags                   []string `json:"tags"`
+	Category               string   `json:"category"`
+	RepostStatementVersion string   `json:"repost_statement_version,omitempty"`
+	Reason                 string   `json:"reason"`
 }
 
 type SubtitleInput struct {

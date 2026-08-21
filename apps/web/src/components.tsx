@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { Task, TaskStep } from "./api";
 import {
@@ -14,7 +14,7 @@ import {
   statusTone,
   taskStatusForDisplay
 } from "./format";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 
 export function PageHeader({
   eyebrow,
@@ -316,9 +316,9 @@ export function QueryError({
   retry?: () => void;
 }) {
   return (
-    <div className="state-panel state-error" role="alert">
-      <span className="state-code" aria-hidden="true">
-        !
+    <div className="state-panel state-error state-panel-centered" role="alert">
+      <span className="state-code state-graphic" aria-hidden="true">
+        <Icon name="shield" />
       </span>
       <div>
         <h2>{title}</h2>
@@ -344,8 +344,8 @@ export function EmptyState({
 }) {
   return (
     <div className="empty-state">
-      <span className="empty-code" aria-hidden="true">
-        —
+      <span className="empty-code empty-state-icon" aria-hidden="true">
+        <Icon name="folder" />
       </span>
       <h2>{title}</h2>
       <p>{description}</p>
@@ -390,6 +390,8 @@ export function ConfirmDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -405,24 +407,35 @@ export function ConfirmDialog({
   return (
     <dialog
       ref={dialogRef}
-      className="confirm-dialog"
+      className={`confirm-dialog unified-modal ${destructive ? "unified-modal-narrow is-destructive" : ""}`}
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
       }}
       onClose={onClose}
     >
-      <div className="dialog-head">
+      <div className="dialog-head modal-header">
         <span className="dialog-mark" aria-hidden="true">
-          !
+          <Icon name="alert" />
         </span>
-        <div>
-          <h2>{title}</h2>
-          <p>{description}</p>
+        <div className="modal-header-text">
+          <h2 id={titleId} title={title}>{title}</h2>
+          <p id={descriptionId}>{description}</p>
         </div>
+        <button
+          className="modal-close"
+          type="button"
+          aria-label="关闭弹窗"
+          disabled={busy}
+          onClick={onClose}
+        >
+          <Icon name="close" />
+        </button>
       </div>
-      {children ? <div className="dialog-body">{children}</div> : null}
-      <div className="dialog-actions">
+      {children ? <div className="dialog-body modal-body">{children}</div> : null}
+      <div className="dialog-actions modal-footer">
         <button
           ref={cancelRef}
           className="button button-secondary"
@@ -430,7 +443,7 @@ export function ConfirmDialog({
           disabled={busy}
           onClick={onClose}
         >
-          返回
+          取消
         </button>
         <button
           className={`button ${destructive ? "button-danger" : "button-primary"}`}
@@ -441,6 +454,149 @@ export function ConfirmDialog({
           {busy ? "正在处理…" : confirmLabel}
         </button>
       </div>
+    </dialog>
+  );
+}
+
+export function ModalDialog({
+  open,
+  title,
+  description,
+  icon = "file",
+  tone = "primary",
+  size = "default",
+  children,
+  footer,
+  closeDisabled = false,
+  onClose
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  icon?: IconName;
+  tone?: "primary" | "success" | "warning" | "danger";
+  size?: "narrow" | "default" | "wide";
+  children: ReactNode;
+  footer?: ReactNode;
+  closeDisabled?: boolean;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) {
+      returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      dialog.showModal();
+      closeRef.current?.focus();
+      return;
+    }
+    if (!open && dialog.open) {
+      dialog.close();
+      window.setTimeout(() => returnFocusRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className={`unified-modal unified-modal-${size} modal-dialog`}
+      aria-labelledby={titleId}
+      aria-describedby={description ? descriptionId : undefined}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!closeDisabled) onClose();
+      }}
+      onClose={onClose}
+      onClick={(event) => {
+        if (event.target === dialogRef.current && !closeDisabled) onClose();
+      }}
+    >
+      <header className="modal-header">
+        <span className={`modal-header-icon modal-header-icon-${tone}`} aria-hidden="true">
+          <Icon name={icon} />
+        </span>
+        <div className="modal-header-text">
+          <h2 id={titleId}>{title}</h2>
+          {description ? <p id={descriptionId}>{description}</p> : null}
+        </div>
+        <button
+          ref={closeRef}
+          className="modal-close"
+          type="button"
+          aria-label="关闭弹窗"
+          disabled={closeDisabled}
+          onClick={onClose}
+        >
+          <Icon name="close" />
+        </button>
+      </header>
+      <div className="modal-body">{children}</div>
+      {footer ? <footer className="modal-footer">{footer}</footer> : null}
+    </dialog>
+  );
+}
+
+export function SideDrawer({
+  open,
+  title,
+  children,
+  footer,
+  onClose
+}: {
+  open: boolean;
+  title: string;
+  children: ReactNode;
+  footer?: ReactNode;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) {
+      returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      dialog.showModal();
+      closeRef.current?.focus();
+      return;
+    }
+    if (!open && dialog.open) {
+      dialog.close();
+      window.setTimeout(() => returnFocusRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="side-drawer"
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClose={onClose}
+      onClick={(event) => {
+        if (event.target === dialogRef.current) onClose();
+      }}
+    >
+      <header className="side-drawer-header">
+        <h2 id={titleId}>{title}</h2>
+        <button ref={closeRef} className="modal-close" type="button" aria-label="关闭抽屉" onClick={onClose}>
+          <Icon name="close" />
+        </button>
+      </header>
+      <div className="side-drawer-body">{children}</div>
+      {footer ? <footer className="side-drawer-footer">{footer}</footer> : null}
     </dialog>
   );
 }
